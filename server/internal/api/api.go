@@ -38,5 +38,8 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	}
 	mux.HandleFunc("/ws", ws.WebSocketHandler(hub, authenticator, resolve))
 
+	// Serve static files
+	mux.Handle("/", http.FileServer(http.Dir("../client/public")))
+
 	return mux
 }
