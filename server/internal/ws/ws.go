@@ -223,10 +223,11 @@ return func(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, username, err := authenticator(token)if err != nil {
-http.Error(w, "invalid token", http.StatusUnauthorized)
-return
-}
+	userID, username, err := authenticator(token)
+	if err != nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
 
 conn, err := upgrader.Upgrade(w, r, nil)
 if err != nil {
