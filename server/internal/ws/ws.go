@@ -2,12 +2,12 @@
 package ws
 
 import (
-"context"
-"errors"
-"net/http"
-"sync"
-"time"
-
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
 "github.com/gorilla/websocket"
 )
 
@@ -203,21 +203,27 @@ return true
 // resolveToUserID: optional function to resolve username -> userID for direct sends. If nil, hub won't resolve.
 func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(username string) (int, error)) http.HandlerFunc {
 return func(w http.ResponseWriter, r *http.Request) {
-// Expect Authorization: Bearer <token>
-authHeader := r.Header.Get("Authorization")
-if authHeader == "" {
-http.Error(w, "missing authorization", http.StatusUnauthorized)
-return
-}
-// simple parsing
-const prefix = "Bearer "
-if len(authHeader) <= len(prefix) || authHeader[:len(prefix)] != prefix {
-http.Error(w, "invalid authorization header", http.StatusUnauthorized)
-return
-}
-token := authHeader[len(prefix):]
-userID, username, err := authenticator(token)
-if err != nil {
+	// First, try to get the token from the Authorization header
+	token := ""
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		const prefix = "Bearer "
+		if len(authHeader) > len(prefix) && strings.HasPrefix(authHeader, prefix) {
+			token = authHeader[len(prefix):]
+		}
+	}
+
+	// If not in header, try query parameter (for browser clients)
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+
+	if token == "" {
+		http.Error(w, "missing token", http.StatusUnauthorized)
+		return
+	}
+
+	userID, username, err := authenticator(token)if err != nil {
 http.Error(w, "invalid token", http.StatusUnauthorized)
 return
 }
