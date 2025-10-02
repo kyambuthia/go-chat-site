@@ -24,15 +24,17 @@ function App() {
     }
 
     return (
-        <div>
+        <div className="app-container">
             {isRegistering ? (
                 <Register onRegisterSuccess={() => setIsRegistering(false)} />
             ) : (
                 <Login onLoginSuccess={setToken} />
             )}
-            <button onClick={() => setIsRegistering(!isRegistering)}>
-                {isRegistering ? 'Switch to Login' : 'Switch to Register'}
-            </button>
+            <div className="auth-switch-button">
+                <button onClick={() => setIsRegistering(!isRegistering)}>
+                    {isRegistering ? 'Switch to Login' : 'Switch to Register'}
+                </button>
+            </div>
         </div>
     );
 }

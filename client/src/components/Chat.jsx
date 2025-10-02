@@ -36,10 +36,10 @@ function Chat({ token, onLogout }) {
     };
 
     return (
-        <div>
+        <div className="chat-container">
             <h2>Chat</h2>
             <button onClick={onLogout}>Logout</button>
-            <div id="messages" style={{ height: '300px', overflowY: 'scroll', border: '1px solid #ccc', padding: '10px', margin: '10px 0' }}>
+            <div className="messages">
                 {messages.map((msg, i) => <p key={i}>{msg}</p>)}
             </div>
             <form onSubmit={handleSubmit}>
