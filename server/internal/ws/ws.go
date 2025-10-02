@@ -24,13 +24,13 @@ Body string `json:"body,omitempty"`
 
 // client represents a connected WebSocket client.
 type client struct {
-userID   int
-username string
-conn     *websocket.Conn
-send     chan Message
-hub      *Hub
+	userID          int
+	username        string
+	conn            *websocket.Conn
+	send            chan Message
+	hub             *Hub
+	resolveToUserID func(string) (int, error)
 }
-
 // Hub keeps track of connected clients.
 type Hub struct {
 mu      sync.RWMutex
@@ -132,32 +132,45 @@ default:
 // ---------------- client read/write loops ----------------
 
 func (c *client) readLoop() {
-defer func() {
-c.hub.RemoveClient(c.userID)
-}()
-c.conn.SetReadLimit(1024)
-c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-c.conn.SetPongHandler(func(string) error {
-c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-return nil
-})
-for {
-var msg Message
-if err := c.conn.ReadJSON(&msg); err != nil {
-// client disconnected or sent invalid data
-return
-}
-// For skeleton: simply route direct_message types to hub.
-if msg.Type == "direct_message" {
-// resolve recipient by username — placeholder. Hub should expose a lookup
-// In real implementation: query user store for username -> userID
-// Here we send back an acknowledgement
-ack := Message{Type: "ack", Body: "delivered"}
-c.send <- ack
-}
-}
-}
+	defer func() {
+		c.hub.RemoveClient(c.userID)
+	}()
+	c.conn.SetReadLimit(1024)
+	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		return nil
+	})
+	for {
+		var msg Message
+		if err := c.conn.ReadJSON(&msg); err != nil {
+			// client disconnected or sent invalid data
+			return
+		}
 
+		if msg.Type == "direct_message" {
+			if c.resolveToUserID == nil || msg.To == "" {
+				continue // or send error
+			}
+
+			recipientID, err := c.resolveToUserID(msg.To)
+			if err != nil {
+				c.send <- Message{Type: "error", Body: "User not found: " + msg.To}
+				continue
+			}
+
+			// The message to be forwarded
+			forwardMsg := Message{Type: "direct_message", Body: msg.Body}
+
+			if !c.hub.SendDirect(recipientID, forwardMsg) {
+				c.send <- Message{Type: "error", Body: "User is not online: " + msg.To}
+			} else {
+				// Optional: send an ack to the original sender
+				c.send <- Message{Type: "ack", Body: "Message delivered to " + msg.To}
+			}
+		}
+	}
+}
 func (c *client) writeLoop() {
 ticker := time.NewTicker(30 * time.Second)
 defer func() {
@@ -235,13 +248,13 @@ if err != nil {
 return
 }
 c := &client{
-userID:   userID,
-username: username,
-conn:     conn,
-send:     make(chan Message, 16),
-hub:      h,
-}
-if err := h.AddClient(c); err != nil {
+		userID:          userID,
+		username:        username,
+		conn:            conn,
+		send:            make(chan Message, 16),
+		hub:             h,
+		resolveToUserID: resolveToUserID,
+	}if err := h.AddClient(c); err != nil {
 conn.Close()
 return
 }
