@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 	"github.com/kyambuthia/go-chat-site/server/test/testhelpers"
 )
 
@@ -22,7 +23,11 @@ func TestAuthHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	a := NewAPI(s)
+	hub := ws.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+
+	a := NewAPI(s, hub)
 
 	t.Run("TestRegister_Succeeds", func(t *testing.T) {
 		rr := httptest.NewRecorder()

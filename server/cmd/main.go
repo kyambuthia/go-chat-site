@@ -7,6 +7,7 @@ import (
 
 	"github.com/kyambuthia/go-chat-site/server/internal/api"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 	"github.com/kyambuthia/go-chat-site/server/test/testhelpers"
 )
 
@@ -20,7 +21,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	api := api.NewAPI(db)
+	hub := ws.NewHub()
+	go hub.Run()
+
+	api := api.NewAPI(db, hub)
 
 	fmt.Println("Server listening on port 8080")
 	http.ListenAndServe(":8080", api)
