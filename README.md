@@ -4,7 +4,14 @@ a go chat site - backend written using golang, frontend written using vite - smo
 
 ### Server
 
-Migrations are automatically run at startup. To run the tests:
+Migrations are automatically run at startup. To run the server:
+
+```bash
+cd server
+go run cmd/main.go
+```
+
+To run the tests:
 
 ```bash
 cd server
@@ -18,3 +25,7 @@ cd client
 bun install
 bun test
 ```
+
+## API
+
+See [docs/design/api.md](docs/design/api.md) for API documentation.
