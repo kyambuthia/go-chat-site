@@ -15,6 +15,12 @@ func TestMigrations(t *testing.T) {
 	}
 	defer db.Close()
 
+	// Enable foreign key support for this connection
+	_, err = db.Exec("PRAGMA foreign_keys = ON;")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	err = testhelpers.RunMigrations(db, "../migrations")
 	if err != nil {
 		t.Fatal(err)
