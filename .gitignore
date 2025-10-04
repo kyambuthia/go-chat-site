@@ -26,3 +26,4 @@ dist
 
 # DB
 server/chat.db
+\n# Database and log files\n*.db\n*.log
