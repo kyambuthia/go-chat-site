@@ -12,8 +12,7 @@ function Login({ onLoginSuccess }) {
         try {
             const result = await loginUser(username, password);
             if (result.token) {
-                localStorage.setItem('token', result.token);
-                onLoginSuccess(result.token);
+                onLoginSuccess(result);
             } else {
                 throw new Error(result.message || 'Login failed');
             }
