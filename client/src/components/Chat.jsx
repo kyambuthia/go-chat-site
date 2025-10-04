@@ -1,80 +1,87 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from "react";
+import Contacts from "./Contacts";
 
-function Chat({ token, onLogout }) {
-    const [messages, setMessages] = useState([]);
-    const [recipient, setRecipient] = useState('');
-    const [body, setBody] = useState('');
-    const webSocket = useRef(null);
-    const messagesEndRef = useRef(null);
+function ChatWindow({ ws, selectedContact, messages, setMessages }) {
+  const [newMessage, setNewMessage] = useState("");
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // TODO: Fetch message history with selectedContact when it changes
+  // useEffect(() => {
+  //   if (selectedContact) {
+  //     getMessages(selectedContact.ID).then(response => {
+  //       setMessages(response.data);
+  //     });
+  //   }
+  // }, [selectedContact]);
+
+  const handleSendMessage = () => {
+    if (newMessage.trim() && selectedContact) {
+      const message = {
+        type: "direct_message",
+        to: selectedContact.username, // Assuming the API uses Username
+        body: newMessage,
+      };
+      ws.send(JSON.stringify(message));
+      // Add the message to the local state to display it immediately
+      setMessages([...messages, { from: "Me", body: newMessage }]);
+      setNewMessage("");
     }
+  };
 
-    useEffect(scrollToBottom, [messages]);
+  if (!selectedContact) {
+    return <div className="chat-window placeholder">Select a contact to start chatting.</div>;
+  }
 
-    useEffect(() => {
-        const wsUrl = `ws://${window.location.host}/ws?token=${token}`;
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => setMessages(prev => [...prev, { type: 'system', body: 'Connected to chat'}]);
-        ws.onclose = () => setMessages(prev => [...prev, { type: 'system', body: 'Disconnected from chat'}]);
-        
-        ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            if (msg.type === 'error') {
-                setMessages(prev => [...prev, { type: 'system', body: `Error: ${msg.body}` }]);
-            } else if (msg.type === 'ack') {
-                // Optional: handle acknowledgements
-                console.log('Message delivered:', msg.body);
-            } else {
-                setMessages(prev => [...prev, { type: 'received', body: msg.body }]);
-            }
-        };
-        
-        ws.onerror = (error) => {
-            console.error('WebSocket Error:', error);
-            setMessages(prev => [...prev, { type: 'system', body: 'WebSocket connection error.'}]);
-        }
-
-        webSocket.current = ws;
-
-        return () => {
-            ws.close();
-        };
-    }, [token]);
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        if (webSocket.current && recipient && body) {
-            const msg = { type: 'direct_message', to: recipient, body };
-            webSocket.current.send(JSON.stringify(msg));
-            setMessages(prev => [...prev, { type: 'sent', body: `To ${recipient}: ${body}` }]);
-            setBody('');
-        }
-    };
-
-    return (
-        <div className="chat-container">
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-                <h2>Chat</h2>
-                <button onClick={onLogout}>Logout</button>
-            </div>
-            <div className="messages">
-                {messages.map((msg, i) => (
-                    <div key={i} className={`message ${msg.type}`}>
-                        {msg.body}
-                    </div>
-                ))}
-                <div ref={messagesEndRef} />
-            </div>
-            <form onSubmit={handleSubmit}>
-                <input type="text" value={recipient} onChange={e => setRecipient(e.target.value)} placeholder="Recipient" required />
-                <input type="text" value={body} onChange={e => setBody(e.target.value)} placeholder="Message" required style={{gridColumn: 'span 2'}}/>
-                <button type="submit">Send</button>
-            </form>
-        </div>
-    );
+  return (
+    <div className="chat-window">
+      <div className="chat-header">{selectedContact.username}</div>
+      <div className="messages">
+        {messages.map((msg, index) => (
+          <div key={index} className={`message ${msg.from === 'Me' ? 'sent' : 'received'}`}>
+            <b>{msg.from || selectedContact.username}:</b> {msg.body}
+          </div>
+        ))}
+      </div>
+      <div className="input-area">
+        <input
+          type="text"
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Type a message..."
+          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+        />
+        <button onClick={handleSendMessage}>Send</button>
+      </div>
+    </div>
+  );
 }
 
-export default Chat;
+export default function Chat({ ws }) {
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    ws.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      // We need to make sure we're showing the message in the right context
+      // This simple logic assumes the message is from the selected contact
+      setMessages((prevMessages) => [...prevMessages, message]);
+    };
+  }, [ws, selectedContact]); // Re-bind if contact changes
+
+  // Clear messages when contact changes
+  useEffect(() => {
+    setMessages([]);
+  }, [selectedContact]);
+
+  return (
+    <div className="chat-container">
+      <Contacts setSelectedContact={setSelectedContact} />
+      <ChatWindow 
+        ws={ws} 
+        selectedContact={selectedContact} 
+        messages={messages} 
+        setMessages={setMessages} 
+      />
+    </div>
+  );
+}
