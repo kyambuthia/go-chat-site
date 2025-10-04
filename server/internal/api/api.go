@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"net/http"
+	"strings"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/handlers"
@@ -15,6 +17,11 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	authHandler := &handlers.AuthHandler{Store: store}
 	mux.HandleFunc("/api/register", authHandler.Register)
 	mux.HandleFunc("/api/login", authHandler.Login)
+
+	contactsHandler := &handlers.ContactsHandler{Store: store}
+	mux.HandleFunc("/api/contacts", authMiddleware(contactsHandler.GetContacts))
+	mux.HandleFunc("/api/contacts/add", authMiddleware(contactsHandler.AddContact))
+	mux.HandleFunc("/api/contacts/remove", authMiddleware(contactsHandler.RemoveContact))
 
 	authenticator := func(token string) (int, string, error) {
 		claims, err := auth.ValidateToken(token)
@@ -42,4 +49,24 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	mux.Handle("/", http.FileServer(http.Dir("../client/public")))
 
 	return mux
+}
+
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			http.Error(w, "Authorization header required", http.StatusUnauthorized)
+			return
+		}
+
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := auth.ValidateToken(tokenString)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "userID", claims.UserID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
 }
