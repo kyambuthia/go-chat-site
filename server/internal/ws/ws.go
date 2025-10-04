@@ -20,6 +20,7 @@ type Authenticator func(token string) (userID int, username string, err error)
 // Message represents the wire format for messages sent/received over the WS.
 type Message struct {
 	Type string `json:"type"` // e.g. "direct_message"
+	From string `json:"from,omitempty"`
 	To   string `json:"to,omitempty"`
 	Body string `json:"body,omitempty"`
 }
@@ -165,7 +166,7 @@ func (c *client) readLoop() {
 			}
 
 			// The message to be forwarded
-			forwardMsg := Message{Type: "direct_message", Body: msg.Body}
+			forwardMsg := Message{Type: "direct_message", From: c.username, Body: msg.Body}
 
 			if !c.hub.SendDirect(recipientID, forwardMsg) {
 				c.send <- Message{Type: "error", Body: "User is not online: " + msg.To}
@@ -265,11 +266,12 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 
 		log.Println("Client added, launching read/write loops")
 		c := &client{
-			userID:   userID,
-			username: username,
-			conn:     conn,
-			send:     make(chan Message, 16),
-			hub:      h,
+			userID:          userID,
+			username:        username,
+			conn:            conn,
+			send:            make(chan Message, 16),
+			hub:             h,
+			resolveToUserID: resolveToUserID,
 		}
 		if err := h.AddClient(c); err != nil {
 			log.Println("WebSocketHandler: AddClient error:", err)
