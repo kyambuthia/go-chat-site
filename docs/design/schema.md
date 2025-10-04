@@ -39,3 +39,20 @@ CREATE TABLE messages (
   FOREIGN KEY(to_user_id) REFERENCES users(id)
 );
 ```
+
+## Contacts
+
+The `contacts` table stores user contact relationships.
+
+- `user_id`: Foreign key to the `users` table.
+- `contact_id`: Foreign key to the `users` table, indicating the contact.
+
+```sql
+CREATE TABLE contacts (
+  user_id INTEGER NOT NULL,
+  contact_id INTEGER NOT NULL,
+  PRIMARY KEY (user_id, contact_id),
+  FOREIGN KEY(user_id) REFERENCES users(id),
+  FOREIGN KEY(contact_id) REFERENCES users(id)
+);
+```
