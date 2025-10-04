@@ -1,42 +1,81 @@
-import React, { useState, useEffect } from 'react';
-import Login from './components/Login';
-import Register from './components/Register';
-import Chat from './components/Chat';
+import { useState, useEffect } from "react";
+import Login from "./components/Login";
+import Register from "./components/Register";
+import Chat from "./components/Chat";
+import { setToken } from "./api";
 
 function App() {
-    const [token, setToken] = useState(null);
-    const [isRegistering, setIsRegistering] = useState(false);
+  const [token, setTokenState] = useState(localStorage.getItem("token"));
+  const [ws, setWs] = useState(null);
+  const [isRegistering, setIsRegistering] = useState(false);
 
-    useEffect(() => {
-        const storedToken = localStorage.getItem('token');
-        if (storedToken) {
-            setToken(storedToken);
-        }
-    }, []);
-
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        setToken(null);
-    };
-
+  useEffect(() => {
     if (token) {
-        return <Chat token={token} onLogout={handleLogout} />;
+      // Set token for API calls
+      setToken(token);
+      // Connect to WebSocket
+      const connect = () => {
+        const ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
+        ws.onopen = () => {
+          console.log("WebSocket connected");
+          setWs(ws);
+        };
+        ws.onclose = () => {
+          console.log("WebSocket disconnected. Retrying in 5 seconds...");
+          setTimeout(connect, 5000);
+        };
+        ws.onerror = (err) => {
+          console.error("WebSocket error:", err);
+          ws.close();
+        };
+      };
+      connect();
+    } else {
+      if (ws) {
+        ws.close();
+        setWs(null);
+      }
     }
 
+    // Cleanup on component unmount
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [token]);
+
+  const handleLoginSuccess = (data) => {
+    localStorage.setItem("token", data.token);
+    setTokenState(data.token);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    setTokenState(null);
+  };
+
+  if (token && ws) {
     return (
-        <div className="app-container">
-            {isRegistering ? (
-                <Register onRegisterSuccess={() => setIsRegistering(false)} />
-            ) : (
-                <Login onLoginSuccess={setToken} />
-            )}
-            <div className="auth-switch-button">
-                <button onClick={() => setIsRegistering(!isRegistering)}>
-                    {isRegistering ? 'Switch to Login' : 'Switch to Register'}
-                </button>
-            </div>
-        </div>
+      <div className="app-container">
+        <button onClick={handleLogout} className="logout-button">Logout</button>
+        <Chat ws={ws} />
+      </div>
     );
+  }
+
+  return (
+    <div className="auth-container">
+      {isRegistering ? (
+        <Register onRegisterSuccess={() => setIsRegistering(false)} />
+      ) : (
+        <Login onLoginSuccess={handleLoginSuccess} />
+      )}
+      <button onClick={() => setIsRegistering(!isRegistering)} className="auth-switch-button">
+        {isRegistering ? "Back to Login" : "Create an account"}
+      </button>
+    </div>
+  );
 }
 
 export default App;
