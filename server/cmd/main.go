@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -8,16 +9,14 @@ import (
 	"github.com/kyambuthia/go-chat-site/server/internal/api"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/ws"
-	"github.com/kyambuthia/go-chat-site/server/test/testhelpers"
 )
 
 func main() {
-	db, err := store.NewSqliteStore("chat.db")
-	if err != nil {
-		log.Fatal(err)
-	}
+	dbPath := flag.String("db", "chat.db", "path to the database file")
+	flag.Parse()
 
-	if err := testhelpers.RunMigrations(db.DB, "migrations"); err != nil {
+	db, err := store.NewSqliteStore(*dbPath)
+	if err != nil {
 		log.Fatal(err)
 	}
 
