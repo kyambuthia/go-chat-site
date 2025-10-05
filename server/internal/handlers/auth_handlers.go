@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
@@ -70,11 +71,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("Login attempt for user: %s", creds.Username)
+	log.Printf("Password from request: %s", creds.Password)
+	log.Printf("Hashed password from DB: %s", hashedPassword)
+
 	if !auth.CheckPassword(creds.Password, hashedPassword) {
+		log.Println("Password check failed")
 		http.Error(w, "Invalid username or password", http.StatusUnauthorized)
 		return
 	}
 
+	log.Println("Password check successful")
 	token, err := auth.GenerateToken(id)
 	if err != nil {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
