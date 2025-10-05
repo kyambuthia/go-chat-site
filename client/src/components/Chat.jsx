@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import Contacts from "./Contacts";
+import { getContacts } from "../api";
 
-function ChatWindow({ ws, selectedContact, messages, setMessages }) {
+function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
   const [newMessage, setNewMessage] = useState("");
 
   // TODO: Fetch message history with selectedContact when it changes
@@ -33,7 +33,10 @@ function ChatWindow({ ws, selectedContact, messages, setMessages }) {
 
   return (
     <div className="chat-window">
-      <div className="chat-header">{selectedContact.username}</div>
+      <div className="chat-header">
+        <button onClick={onBack}>Back</button>
+        <h2>{selectedContact.username}</h2>
+      </div>
       <div className="messages">
         {messages.map((msg, index) => (
           <div key={index} className={`message ${msg.from === 'Me' ? 'sent' : 'received'}`}>
@@ -55,33 +58,53 @@ function ChatWindow({ ws, selectedContact, messages, setMessages }) {
   );
 }
 
-export default function Chat({ ws }) {
-  const [selectedContact, setSelectedContact] = useState(null);
+export default function Chat({ ws, selectedContact, setSelectedContact }) {
   const [messages, setMessages] = useState([]);
+  const [contacts, setContacts] = useState([]);
 
   useEffect(() => {
-    ws.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      // We need to make sure we're showing the message in the right context
-      // This simple logic assumes the message is from the selected contact
-      setMessages((prevMessages) => [...prevMessages, message]);
+    const fetchContacts = async () => {
+      const response = await getContacts();
+      setContacts(response || []);
     };
-  }, [ws, selectedContact]); // Re-bind if contact changes
+    fetchContacts();
+  }, []);
 
-  // Clear messages when contact changes
+  useEffect(() => {
+    if (selectedContact) {
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        setMessages((prevMessages) => [...prevMessages, message]);
+      };
+    }
+  }, [ws, selectedContact]);
+
   useEffect(() => {
     setMessages([]);
   }, [selectedContact]);
 
+  if (!selectedContact) {
+    return (
+      <div className="contacts-list">
+        <h2>Contacts</h2>
+        <ul>
+          {contacts.map((contact) => (
+            <li key={contact.id} onClick={() => setSelectedContact(contact)}>
+              {contact.username}
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
   return (
-    <div className="chat-container">
-      <Contacts setSelectedContact={setSelectedContact} />
-      <ChatWindow 
-        ws={ws} 
-        selectedContact={selectedContact} 
-        messages={messages} 
-        setMessages={setMessages} 
-      />
-    </div>
+    <ChatWindow
+      ws={ws}
+      selectedContact={selectedContact}
+      messages={messages}
+      setMessages={setMessages}
+      onBack={() => setSelectedContact(null)}
+    />
   );
 }
