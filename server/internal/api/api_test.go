@@ -9,7 +9,7 @@ import (
 
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/ws"
-	"github.com/kyambuthia/go-chat-site/server/test/testhelpers"
+	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 )
 
 func TestAuthHandlers(t *testing.T) {
@@ -18,7 +18,7 @@ func TestAuthHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = testhelpers.RunMigrations(s.DB, "../../migrations")
+	err = migrate.RunMigrations(s.DB, "../../migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
