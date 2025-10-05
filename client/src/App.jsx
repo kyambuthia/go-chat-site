@@ -2,12 +2,15 @@ import { useState, useEffect } from "react";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import Chat from "./components/Chat";
+import ContactsPage from "./components/ContactsPage";
 import { setToken } from "./api";
 
 function App() {
   const [token, setTokenState] = useState(localStorage.getItem("token"));
   const [ws, setWs] = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [currentPage, setCurrentPage] = useState("chat");
+  const [selectedContact, setSelectedContact] = useState(null);
 
   useEffect(() => {
     if (token) {
@@ -55,11 +58,22 @@ function App() {
     setTokenState(null);
   };
 
+  const handleSelectContact = (contact) => {
+    setSelectedContact(contact);
+    setCurrentPage("chat");
+  }
+
   if (token && ws) {
     return (
       <div className="app-container">
-        <button onClick={handleLogout} className="logout-button">Logout</button>
-        <Chat ws={ws} />
+        <nav className="main-nav">
+          <button onClick={() => setCurrentPage("chat")} disabled={currentPage === "chat"}>Chat</button>
+          <button onClick={() => setCurrentPage("contacts")} disabled={currentPage === "contacts"}>Contacts</button>
+          <button onClick={handleLogout} className="logout-button">Logout</button>
+        </nav>
+        <div className="chat-container">
+          {currentPage === "chat" ? <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={handleSelectContact} /> : <ContactsPage setSelectedContact={handleSelectContact} />}
+        </div>
       </div>
     );
   }
