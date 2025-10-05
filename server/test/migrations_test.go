@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/kyambuthia/go-chat-site/server/test/testhelpers"
+	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -21,7 +21,7 @@ func TestMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = testhelpers.RunMigrations(db, "../migrations")
+	err = migrate.RunMigrations(db, "../migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
