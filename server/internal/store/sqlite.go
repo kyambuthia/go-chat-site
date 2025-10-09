@@ -62,6 +62,16 @@ func (s *SqliteStore) GetUserByUsername(username string) (*User, error) {
 	return user, nil
 }
 
+func (s *SqliteStore) GetUserByID(id int) (*User, error) {
+	row := s.DB.QueryRow(`SELECT id, username FROM users WHERE id = ?`, id)
+	user := &User{}
+	err := row.Scan(&user.ID, &user.Username)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
 func (s *SqliteStore) GetContacts(userID int) (*sql.Rows, error) {
 	rows, err := s.DB.Query(`
 		SELECT u.id, u.username, COALESCE(u.display_name, ''), COALESCE(u.avatar_url, '')
