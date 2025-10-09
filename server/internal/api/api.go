@@ -1,9 +1,8 @@
 package api
 
 import (
-	"context"
+	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/handlers"
@@ -15,14 +14,28 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	mux := http.NewServeMux()
 
 	authHandler := &handlers.AuthHandler{Store: store}
-	mux.HandleFunc("/api/register", authHandler.Register)
-	mux.HandleFunc("/api/login", authHandler.Login)
-
 	contactsHandler := &handlers.ContactsHandler{Store: store}
-	mux.HandleFunc("/api/contacts", authMiddleware(contactsHandler.GetContacts))
-	mux.HandleFunc("/api/contacts/add", authMiddleware(contactsHandler.AddContact))
-	mux.HandleFunc("/api/contacts/remove", authMiddleware(contactsHandler.RemoveContact))
+	inviteHandler := &handlers.InviteHandler{Store: store}
+	walletHandler := &handlers.WalletHandler{Store: store}
 
+	// Auth
+	mux.HandleFunc("/api/register", authHandler.Register)
+	mux.HandleFunc("/api/login", auth.Login(store))
+
+	// Contacts
+	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(contactsHandler.GetContacts)))
+
+	// Invites
+	mux.Handle("/api/invites", auth.Middleware(http.HandlerFunc(inviteHandler.GetInvites)))
+	mux.Handle("/api/invites/send", auth.Middleware(http.HandlerFunc(inviteHandler.SendInvite)))
+	mux.Handle("/api/invites/accept", auth.Middleware(http.HandlerFunc(inviteHandler.AcceptInvite)))
+	mux.Handle("/api/invites/reject", auth.Middleware(http.HandlerFunc(inviteHandler.RejectInvite)))
+
+	// Wallet
+	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
+	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
+
+	// Websocket
 	authenticator := func(token string) (int, string, error) {
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
@@ -32,41 +45,20 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 		return claims.UserID, "", nil
 	}
 	resolve := func(username string) (int, error) {
-		row, err := store.GetUserByUsername(username)
+		user, err := store.GetUserByUsername(username)
 		if err != nil {
 			return 0, err
 		}
-		var id int
-		var passwordHash string
-		if err := row.Scan(&id, &passwordHash); err != nil {
-			return 0, err
-		}
-		return id, nil
+		return user.ID, nil
 	}
 	mux.HandleFunc("/ws", ws.WebSocketHandler(hub, authenticator, resolve))
 
-	// Serve static files
-	mux.Handle("/", http.FileServer(http.Dir("../client/public")))
-
-	return mux
+	return loggingMiddleware(mux)
 }
 
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "Authorization header required", http.StatusUnauthorized)
-			return
-		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := auth.ValidateToken(tokenString)
-		if err != nil {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-			return
-		}
-
-		ctx := context.WithValue(r.Context(), "userID", claims.UserID)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	}
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Request received")
+		next.ServeHTTP(w, r)
+	})
 }
