@@ -96,6 +96,13 @@ func (s *SqliteStore) RemoveContact(userID, contactID int) error {
 }
 
 func (s *SqliteStore) CreateInvite(inviterID, inviteeID int) error {
+	// Check if an invite already exists
+	var exists bool
+	row := s.DB.QueryRow(`SELECT 1 FROM invites WHERE (inviter_id = ? AND invitee_id = ?) OR (inviter_id = ? AND invitee_id = ?)`, inviterID, inviteeID, inviteeID, inviterID)
+	if row.Scan(&exists) == nil {
+		return errors.New("an invite already exists between these users")
+	}
+
 	_, err := s.DB.Exec(`INSERT INTO invites (inviter_id, invitee_id) VALUES (?, ?)`, inviterID, inviteeID)
 	return err
 }

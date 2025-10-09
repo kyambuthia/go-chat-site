@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type InviteHandler struct {
@@ -17,7 +19,7 @@ func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 		return
 	}
 
@@ -25,12 +27,17 @@ func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.Store.GetUserByUsername(req.Username)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
+		return
+	}
+
+	if inviterID == user.ID {
+		web.JSONError(w, errors.New("you cannot invite yourself"), http.StatusBadRequest)
 		return
 	}
 
 	if err := h.Store.CreateInvite(inviterID, user.ID); err != nil {
-		http.Error(w, "Failed to send invite", http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -42,7 +49,7 @@ func (h *InviteHandler) GetInvites(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := h.Store.GetInvites(userID)
 	if err != nil {
-		http.Error(w, "Failed to get invites", http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -58,7 +65,7 @@ func (h *InviteHandler) GetInvites(w http.ResponseWriter, r *http.Request) {
 			InviterUsername string `json:"inviter_username"`
 		}
 		if err := rows.Scan(&invite.ID, &invite.InviterUsername); err != nil {
-			http.Error(w, "Failed to scan invite", http.StatusInternalServerError)
+			web.JSONError(w, err, http.StatusInternalServerError)
 			return
 		}
 		invites = append(invites, invite)
@@ -73,14 +80,14 @@ func (h *InviteHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 		return
 	}
 
 	userID := r.Context().Value("userID").(int)
 
 	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, "accepted"); err != nil {
-		http.Error(w, "Failed to accept invite", http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -93,14 +100,14 @@ func (h *InviteHandler) RejectInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 		return
 	}
 
 	userID := r.Context().Value("userID").(int)
 
 	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, "rejected"); err != nil {
-		http.Error(w, "Failed to reject invite", http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
