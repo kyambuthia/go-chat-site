@@ -51,8 +51,8 @@ func TestWebSocketHandler_ValidToken(t *testing.T) {
 		t.Fatalf("could not read json: %v", err)
 	}
 
-	if receivedMsg.Type != "ack" {
-		t.Errorf("expected ack message, got %s", receivedMsg.Type)
+	if receivedMsg.Type != "message_ack" {
+		t.Errorf("expected message_ack message, got %s", receivedMsg.Type)
 	}
 }
 
