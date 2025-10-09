@@ -17,6 +17,7 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	contactsHandler := &handlers.ContactsHandler{Store: store}
 	inviteHandler := &handlers.InviteHandler{Store: store}
 	walletHandler := &handlers.WalletHandler{Store: store}
+	meHandler := &handlers.MeHandler{Store: store}
 
 	// Auth
 	mux.HandleFunc("/api/register", authHandler.Register)
@@ -32,6 +33,7 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	mux.Handle("/api/invites/reject", auth.Middleware(http.HandlerFunc(inviteHandler.RejectInvite)))
 
 	// Wallet
+	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(meHandler.GetMe)))
 	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
 

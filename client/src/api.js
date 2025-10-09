@@ -76,3 +76,7 @@ export const rejectInvite = (inviteID) => {
     body: JSON.stringify({ invite_id: inviteID }),
   });
 };
+
+export const getMe = () => apiRequest("/api/me");
+
+export const getWallet = () => apiRequest("/api/wallet");
