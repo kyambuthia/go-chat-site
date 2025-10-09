@@ -1,12 +1,16 @@
+// ISSUE: The error handling in the Login function is not descriptive.
+// It returns generic HTTP errors, masking the underlying cause (e.g., database errors or token generation failures),
+// which makes debugging the 500 error difficult.
+
 package auth
 
 import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/kyambuthia/go-chat-site/server/internal/api"
 	"github.com/kyambuthia/go-chat-site/server/internal/crypto"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 func Login(store *store.SqliteStore) http.HandlerFunc {
@@ -17,24 +21,24 @@ func Login(store *store.SqliteStore) http.HandlerFunc {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-			api.JSONError(w, err, http.StatusBadRequest)
+			web.JSONError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		user, err := store.GetUserByUsername(creds.Username)
 		if err != nil {
-			api.JSONError(w, err, http.StatusUnauthorized)
+			web.JSONError(w, err, http.StatusUnauthorized)
 			return
 		}
 
 		if !crypto.CheckPasswordHash(creds.Password, user.PasswordHash) {
-			api.JSONError(w, err, http.StatusUnauthorized)
+			web.JSONError(w, err, http.StatusUnauthorized)
 			return
 		}
 
 		token, err := GenerateToken(user.ID)
 		if err != nil {
-			api.JSONError(w, err, http.StatusInternalServerError)
+			web.JSONError(w, err, http.StatusInternalServerError)
 			return
 		}
 
