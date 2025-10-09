@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type WalletHandler struct {
@@ -16,7 +18,7 @@ func (h *WalletHandler) GetWallet(w http.ResponseWriter, r *http.Request) {
 
 	wallet, err := h.Store.GetWallet(userID)
 	if err != nil {
-		http.Error(w, "Failed to get wallet", http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -30,7 +32,7 @@ func (h *WalletHandler) SendMoney(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 		return
 	}
 
@@ -38,14 +40,13 @@ func (h *WalletHandler) SendMoney(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.Store.GetUserByUsername(req.Username)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
 		return
 	}
 
 	if err := h.Store.SendMoney(senderID, user.ID, req.Amount); err != nil {
-		http.Error(w, "Failed to send money", http.StatusInternalServerError)
-		return
-	}
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return	}
 
 	w.WriteHeader(http.StatusOK)
 }
