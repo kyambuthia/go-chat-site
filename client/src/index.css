@@ -398,10 +398,11 @@ main {
 @media (min-width: 769px) {
     .App {
         flex-direction: row; /* Desktop: side-by-side chat/contacts */
-        height: calc(100% - 40px); /* Adjust for fixed nav height */
-        margin-top: 20px; /* Push down from top */
-        margin-bottom: 20px; /* Push up from bottom */
+        height: 100%; /* Let content dictate height, or use a fixed height for the app */
+        margin-top: 0; /* No need for margin-top */
+        margin-bottom: 0; /* No need for margin-bottom */
         border-radius: 0px; /* Wireframe look */
+        overflow: hidden; /* Allow internal scrolling */
     }
 
     .app-content {
@@ -414,10 +415,10 @@ main {
     }
 
     nav {
-        position: absolute; /* Relative to App container */
-        bottom: 0;
-        left: 0;
-        right: 0;
+        position: relative; /* Relative to App container */
+        bottom: auto;
+        left: auto;
+        right: auto;
         width: auto; /* Let App container define width */
         border-radius: 0px; /* Wireframe look */
     }
