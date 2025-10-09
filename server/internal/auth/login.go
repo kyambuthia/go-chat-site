@@ -1,11 +1,8 @@
-// ISSUE: The error handling in the Login function is not descriptive.
-// It returns generic HTTP errors, masking the underlying cause (e.g., database errors or token generation failures),
-// which makes debugging the 500 error difficult.
-
 package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/crypto"
@@ -21,18 +18,18 @@ func Login(store *store.SqliteStore) http.HandlerFunc {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-			web.JSONError(w, err, http.StatusBadRequest)
+			web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 			return
 		}
 
 		user, err := store.GetUserByUsername(creds.Username)
 		if err != nil {
-			web.JSONError(w, err, http.StatusUnauthorized)
+			web.JSONError(w, errors.New("invalid username or password"), http.StatusUnauthorized)
 			return
 		}
 
 		if !crypto.CheckPasswordHash(creds.Password, user.PasswordHash) {
-			web.JSONError(w, err, http.StatusUnauthorized)
+			web.JSONError(w, errors.New("invalid username or password"), http.StatusUnauthorized)
 			return
 		}
 
