@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { loginUser } from '../api';
 
-function Login({ onLoginSuccess }) {
+export default function Login({ onLogin, onShowRegister }) {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
@@ -12,7 +12,7 @@ function Login({ onLoginSuccess }) {
         try {
             const result = await loginUser(username, password);
             if (result.token) {
-                onLoginSuccess(result);
+      onLogin(data.token);
             } else {
                 throw new Error(result.message || 'Login failed');
             }
