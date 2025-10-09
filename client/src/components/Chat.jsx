@@ -98,13 +98,17 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
     return (
       <div className="contacts-list">
         <h2>Contacts</h2>
-        <ul>
-          {contacts.map((contact) => (
-            <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-              {contact.username}
-            </li>
-          ))}
-        </ul>
+        {contacts.length === 0 ? (
+          <p className="empty-chat-message">Invite a friend from the Contacts tab to start chatting.</p>
+        ) : (
+          <ul>
+            {contacts.map((contact) => (
+              <li key={contact.id} onClick={() => setSelectedContact(contact)}>
+                {contact.username}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }

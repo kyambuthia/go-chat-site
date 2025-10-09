@@ -52,6 +52,13 @@ export const loginUser = async (username, password) => {
 
 export const getContacts = () => apiRequest("/api/contacts");
 
+export const sendInvite = (username) => {
+  return apiRequest("/api/invites/send", {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+};
+
 
 
 export const getInvites = () => apiRequest("/api/invites");
