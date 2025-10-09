@@ -1,3 +1,7 @@
+// ISSUE: The error handling in the Register function is not descriptive.
+// It returns generic HTTP errors, masking the underlying cause (e.g., database errors),
+// which makes debugging difficult.
+
 package handlers
 
 import (
@@ -5,8 +9,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/kyambuthia/go-chat-site/server/internal/api"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type AuthHandler struct {
@@ -20,18 +24,18 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		api.JSONError(w, err, http.StatusBadRequest)
+		web.JSONError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if len(creds.Password) < 8 {
-		api.JSONError(w, errors.New("password too short"), http.StatusBadRequest)
+		web.JSONError(w, errors.New("password too short"), http.StatusBadRequest)
 		return
 	}
 
 	id, err := h.Store.CreateUser(creds.Username, creds.Password)
 	if err != nil {
-		api.JSONError(w, err, http.StatusConflict)
+		web.JSONError(w, err, http.StatusConflict)
 		return
 	}
 
