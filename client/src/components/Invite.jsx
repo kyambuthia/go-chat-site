@@ -4,15 +4,18 @@ import { sendInvite } from "../api";
 export default function Invite() {
   const [username, setUsername] = useState("");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
+    setMessage(null);
     try {
       await sendInvite(username);
       setMessage(`Invite sent to ${username}`);
       setUsername("");
-    } catch (error) {
-      setMessage(error.message);
+    } catch (err) {
+      setError(err.message);
     }
   };
 
@@ -25,10 +28,12 @@ export default function Invite() {
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Enter username"
+          required
         />
-        <button type="submit">Send Invite</button>
+        <button type="submit" className="primary">Send Invite</button>
       </form>
-      {message && <p>{message}</p>}
+      {message && <p className="success-message">{message}</p>}
+      {error && <p className="error-message">{error}</p>}
     </div>
   );
 }

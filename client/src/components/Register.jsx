@@ -1,36 +1,48 @@
-import React, { useState } from 'react';
-import { registerUser } from '../api';
+import { useState } from "react";
+import { registerUser } from "../api";
 
-function Register({ onRegisterSuccess }) {
-    const [username, setUsername] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+export default function Register({ onRegisterSuccess }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        try {
-            const result = await registerUser(username, password);
-            if (result.id) {
-                alert('Registration successful! Please log in.');
-                onRegisterSuccess();
-            } else {
-                throw new Error(result.message || 'Registration failed');
-            }
-        } catch (err) {
-            setError(err.message);
-        }
-    };
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await registerUser(username, password);
+      setMessage("Registration successful! Please log in.");
+      setUsername("");
+      setPassword("");
+      onRegisterSuccess();
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
 
-    return (
-        <form onSubmit={handleSubmit}>
-            <h2>Register</h2>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} placeholder="Username" required />
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" required />
-            <button type="submit">Register</button>
-            {error && <p style={{color: 'red'}}>{error}</p>}
-        </form>
-    );
+  return (
+    <div className="auth-container">
+      <h2>Register</h2>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Username"
+          required
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          required
+        />
+        <button type="submit" className="primary">Register</button>
+      </form>
+      {message && <p>{message}</p>}
+      <button onClick={onRegisterSuccess} className="auth-switch-button">
+        Already have an account? Login
+      </button>
+    </div>
+  );
 }
-
-export default Register;

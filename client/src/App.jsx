@@ -1,95 +1,95 @@
 import { useState, useEffect } from "react";
+import Chat from "./components/Chat";
 import Login from "./components/Login";
 import Register from "./components/Register";
-import Chat from "./components/Chat";
 import ContactsPage from "./components/ContactsPage";
 import InvitesPage from "./components/InvitesPage";
+import AccountPage from "./components/AccountPage"; // Import AccountPage
 import { setToken } from "./api";
 
+const WS_URL = "ws://localhost:5173/ws";
+
 function App() {
-  const [token, setTokenState] = useState(localStorage.getItem("token"));
   const [ws, setWs] = useState(null);
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [currentPage, setCurrentPage] = useState("chat");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showRegister, setShowRegister] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
+  const [activeTab, setActiveTab] = useState("chat");
 
   useEffect(() => {
-    if (token) {
-      // Set token for API calls
-      setToken(token);
-      // Connect to WebSocket
-      const connect = () => {
-        const ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
-        ws.onopen = () => {
-          console.log("WebSocket connected");
-          setWs(ws);
-        };
-        ws.onclose = () => {
-          console.log("WebSocket disconnected. Retrying in 5 seconds...");
-          setTimeout(connect, 5000);
-        };
-        ws.onerror = (err) => {
-          console.error("WebSocket error:", err);
-          ws.close();
-        };
+    if (isLoggedIn) {
+      const token = localStorage.getItem("token");
+      const socket = new WebSocket(`${WS_URL}?token=${token}`);
+      setWs(socket);
+
+      return () => {
+        socket.close();
       };
-      connect();
-    } else {
-      if (ws) {
-        ws.close();
-        setWs(null);
-      }
     }
+  }, [isLoggedIn]);
 
-    // Cleanup on component unmount
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [token]);
-
-  const handleLoginSuccess = (data) => {
-    localStorage.setItem("token", data.token);
-    setTokenState(data.token);
+  const handleLogin = (token) => {
+    localStorage.setItem("token", token);
+    setToken(token);
+    setIsLoggedIn(true);
+    setActiveTab("chat");
   };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    setTokenState(null);
+    setToken(null);
+    setIsLoggedIn(false);
+    setWs(null);
   };
 
-  const handleSelectContact = (contact) => {
-    setSelectedContact(contact);
-    setCurrentPage("chat");
-  }
+  const renderContent = () => {
+    if (!isLoggedIn) {
+      return showRegister ? (
+        <Register onRegisterSuccess={() => setShowRegister(false)} />
+      ) : (
+        <Login onLogin={handleLogin} onShowRegister={() => setShowRegister(true)} />
+      );
+    }
 
-  if (token && ws) {
-    return (
-      <div className="app-container">
-        <nav className="main-nav">
-          <button onClick={() => setCurrentPage("chat")} disabled={currentPage === "chat"}>Chat</button>
-          <button onClick={() => setCurrentPage("contacts")} disabled={currentPage === "contacts"}>Contacts</button>
-          <button onClick={() => setCurrentPage("invites")} disabled={currentPage === "invites"}>Invites</button>
-          <button onClick={handleLogout} className="logout-button">Logout</button>
-        </nav>
-        <div className="chat-container">
-          {currentPage === "chat" ? <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={handleSelectContact} /> : currentPage === "contacts" ? <ContactsPage setSelectedContact={handleSelectContact} /> : <InvitesPage />}
-        </div>
-      </div>
-    );
-  }
+    if (!ws) {
+      return <div>Connecting...</div>;
+    }
+
+    switch (activeTab) {
+      case "chat":
+        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} />;
+      case "contacts":
+        return <ContactsPage setSelectedContact={setSelectedContact} />;
+      case "invites":
+        return <InvitesPage />;
+      case "account": // Add account case
+        return <AccountPage handleLogout={handleLogout} />;
+      default:
+        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} />;
+    }
+  };
 
   return (
-    <div className="auth-container">
-      {isRegistering ? (
-        <Register onRegisterSuccess={() => setIsRegistering(false)} />
-      ) : (
-        <Login onLoginSuccess={handleLoginSuccess} />
+    <div className="App">
+      <div className="app-content">
+        {renderContent()}
+      </div>
+      {isLoggedIn && (
+        <nav>
+          <button onClick={() => setActiveTab("chat")} className={activeTab === "chat" ? "active" : ""}>
+            Chat
+          </button>
+          <button onClick={() => setActiveTab("contacts")} className={activeTab === "contacts" ? "active" : ""}>
+            Contacts
+          </button>
+          <button onClick={() => setActiveTab("invites")} className={activeTab === "invites" ? "active" : ""}>
+            Invites
+          </button>
+          <button onClick={() => setActiveTab("account")} className={activeTab === "account" ? "active" : ""}>
+            Account
+          </button>
+        </nav>
       )}
-      <button onClick={() => setIsRegistering(!isRegistering)} className="auth-switch-button">
-        {isRegistering ? "Back to Login" : "Create an account"}
-      </button>
     </div>
   );
 }

@@ -36,8 +36,8 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
     <div className="chat-window">
       <div className="chat-header">
         <button onClick={onBack}>Back</button>
-        <img src={selectedContact.avatar_url} alt={selectedContact.display_name} />
-        <h2>{selectedContact.display_name}</h2>
+        {/* <img src={selectedContact.avatar_url} alt={selectedContact.display_name} /> */}
+        <h2>{selectedContact.display_name || selectedContact.username}</h2>
       </div>
       <div className="messages">
         {messages.map((msg, index) => (
@@ -55,7 +55,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
           placeholder="Type a message..."
           onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
         />
-        <button onClick={handleSendMessage}>Send</button>
+        <button onClick={handleSendMessage} className="primary">Send</button>
       </div>
     </div>
   );
@@ -64,11 +64,22 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
 export default function Chat({ ws, selectedContact, setSelectedContact }) {
   const [messages, setMessages] = useState([]);
   const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchContacts = async () => {
-      const response = await getContacts();
-      setContacts(response || []);
+      try {
+        setLoading(true);
+        const response = await getContacts();
+        setContacts(response || []);
+      } catch (err) {
+        console.error("Failed to fetch contacts:", err);
+        setError(err.message);
+        setContacts([]);
+      } finally {
+        setLoading(false);
+      }
     };
     fetchContacts();
   }, []);
@@ -94,20 +105,42 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
     setMessages([]);
   }, [selectedContact]);
 
+  if (loading) {
+    return (
+      <div className="chat-main">
+        <h2>Chat</h2>
+        <p>Loading contacts...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="chat-main">
+        <h2>Chat</h2>
+        <p>Error: {error}</p>
+      </div>
+    );
+  }
+
   if (!selectedContact) {
     return (
-      <div className="contacts-list">
-        <h2>Contacts</h2>
+      <div className="chat-main">
+        <h2>Chat</h2>
         {contacts.length === 0 ? (
           <p className="empty-chat-message">Invite a friend from the Contacts tab to start chatting.</p>
         ) : (
-          <ul>
-            {contacts.map((contact) => (
-              <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-                {contact.username}
-              </li>
-            ))}
-          </ul>
+          <div className="contacts-list-small">
+            <h3>Your Contacts</h3>
+            <ul>
+              {contacts.map((contact) => (
+                <li key={contact.id} onClick={() => setSelectedContact(contact)}>
+                  {/* <img src={contact.avatar_url} alt={contact.display_name} /> */}
+                  <span>{contact.display_name || contact.username}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
       </div>
     );
