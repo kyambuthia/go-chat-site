@@ -7,18 +7,17 @@ export default function Login({ onLogin, onShowRegister }) {
     const [error, setError] = useState('');
 
     const handleSubmit = async (e) => {
-        e.preventDefault();
-        setError('');
-        try {
-            const result = await loginUser(username, password);
-            if (result.token) {
-      onLogin(data.token);
-            } else {
-                throw new Error(result.message || 'Login failed');
-            }
-        } catch (err) {
-            setError(err.message);
+      e.preventDefault();
+      try {
+        const data = await loginUser(username, password);
+        if (data && data.token) {
+          onLogin(data.token);
+        } else {
+          setMessage("Login failed: No token received.");
         }
+      } catch (error) {
+        setMessage(error.message);
+      }
     };
 
     return (
