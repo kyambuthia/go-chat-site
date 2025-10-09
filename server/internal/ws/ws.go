@@ -19,6 +19,7 @@ type Authenticator func(token string) (userID int, username string, err error)
 
 // Message represents the wire format for messages sent/received over the WS.
 type Message struct {
+	ID   int64  `json:"id,omitempty"`
 	Type string `json:"type"` // e.g. "direct_message"
 	From string `json:"from,omitempty"`
 	To   string `json:"to,omitempty"`
@@ -172,7 +173,7 @@ func (c *client) readLoop() {
 				c.send <- Message{Type: "error", Body: "User is not online: " + msg.To}
 			} else {
 				// Optional: send an ack to the original sender
-				c.send <- Message{Type: "ack", Body: "Message delivered to " + msg.To}
+				c.send <- Message{Type: "message_ack", ID: msg.ID}
 			}
 		}
 	}
@@ -226,15 +227,20 @@ var upgrader = websocket.Upgrader{
 // resolveToUserID: optional function to resolve username -> userID for direct sends. If nil, hub won't resolve.
 func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(username string) (int, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Println("Recovered from panic in WebSocketHandler:", r)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+
 		log.Println("WebSocket handler called")
 		// First, try to get the token from the Authorization header
 		token := ""
 		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			const prefix = "Bearer "
-			if len(authHeader) > len(prefix) && strings.HasPrefix(authHeader, prefix) {
-				token = authHeader[len(prefix):]
-			}
+		const prefix = "Bearer "
+		if strings.HasPrefix(strings.TrimSpace(authHeader), prefix) {
+			token = strings.TrimSpace(strings.TrimPrefix(authHeader, prefix))
 		}
 
 		// If not in header, try query parameter (for browser clients)
@@ -260,7 +266,7 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Println("Upgrade failed:", err)
-			// cannot upgrade
+			http.Error(w, "failed to upgrade connection", http.StatusInternalServerError)
 			return
 		}
 
@@ -275,6 +281,7 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 		}
 		if err := h.AddClient(c); err != nil {
 			log.Println("WebSocketHandler: AddClient error:", err)
+			http.Error(w, "failed to register client", http.StatusInternalServerError)
 			conn.Close()
 			return
 		}
