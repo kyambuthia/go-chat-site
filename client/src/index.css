@@ -5,7 +5,7 @@
     --text-color: #000000;
     --border-color: #333333;
     --accent-color: #555555; /* Darker gray for active states/buttons */
-    --danger-color: #cc0000; /* Red for logout, as it's a destructive action */
+    --danger-color: #cc0000; /* For logout, as it's a destructive action */
     --spacing-xs: 0.5rem;
     --spacing-sm: 1rem;
     --spacing-md: 1.5rem;
@@ -186,10 +186,11 @@ button.danger:hover {
 }
 
 /* --- Main Content Area --- */
-main {
-    padding: var(--spacing-sm);
+.app-content {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow-y: auto; /* Scrollable content */
+    padding: var(--spacing-sm);
+    padding-bottom: calc(var(--spacing-sm) + 40px); /* Space for bottom nav */
 }
 
 /* --- Chat Component --- */
@@ -397,16 +398,15 @@ main {
 /* --- Responsive Layout --- */
 @media (min-width: 769px) {
     .App {
-        flex-direction: column; /* Desktop: stack content vertically */
-        height: 100%;
-        margin-top: 0;
-        margin-bottom: 0;
+        flex-direction: row; /* Desktop: side-by-side chat/contacts */
+        height: calc(100% - 40px); /* Adjust for fixed nav height */
+        margin-top: 20px; /* Push down from top */
+        margin-bottom: 20px; /* Push up from bottom */
         border-radius: 0px; /* Wireframe look */
-        overflow: hidden; /* Allow internal scrolling */
     }
 
     .app-content {
-        padding-bottom: calc(var(--spacing-sm) + 40px); /* Space for bottom nav */
+        padding-bottom: 0; /* No need for bottom padding on desktop */
     }
 
     main {
@@ -415,28 +415,21 @@ main {
     }
 
     nav {
-        position: fixed; /* Keep nav fixed at bottom */
+        position: absolute; /* Relative to App container */
         bottom: 0;
         left: 0;
         right: 0;
-        width: 100%;
-        max-width: var(--max-width-desktop); /* Match App width */
-        margin: 0 auto; /* Center with App */
+        width: auto; /* Let App container define width */
         border-radius: 0px; /* Wireframe look */
     }
 
-    .chat-window, .contacts-list, .invite, .account-page {
-        margin: var(--spacing-sm) auto; /* Center components on desktop */
-        max-width: 600px; /* Constrain width for readability */
-    }
-
     .chat-container {
-        flex-direction: column; /* Stack chat elements */
+        flex-direction: row;
     }
 
     .contacts-list {
-        width: 100%;
-        max-width: 600px;
+        width: 300px;
+        max-width: 300px;
         height: auto;
         border-right: 1px solid var(--border-color);
         border-bottom: none;
@@ -445,6 +438,14 @@ main {
     .chat-window {
         flex-grow: 1;
         height: auto;
+    }
+
+    .contacts-list li img {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        margin-right: var(--spacing-sm);
+        border: 1px solid var(--border-color);
     }
 }
 
