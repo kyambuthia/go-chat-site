@@ -36,23 +36,26 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
 
 	// Websocket
-			authenticator := func(token string) (int, string, error) {
-			claims, err := auth.ValidateToken(token)
-			if err != nil {
-				return 0, "", err
-			}
-			user, err := store.GetUserByID(claims.UserID)
-			if err != nil {
-				return 0, "", err
-			}
-			return user.ID, user.Username, nil
-		}	resolve := func(username string) (int, error) {
+	authenticator := func(token string) (int, string, error) {
+		claims, err := auth.ValidateToken(token)
+		if err != nil {
+			return 0, "", err
+		}
+		user, err := store.GetUserByID(claims.UserID)
+		if err != nil {
+			return 0, "", err
+		}
+		return user.ID, user.Username, nil
+	}
+
+	resolve := func(username string) (int, error) {
 		user, err := store.GetUserByUsername(username)
 		if err != nil {
 			return 0, err
 		}
 		return user.ID, nil
 	}
+
 	mux.HandleFunc("/ws", ws.WebSocketHandler(hub, authenticator, resolve))
 
 	return loggingMiddleware(mux)
