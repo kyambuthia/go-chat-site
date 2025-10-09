@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/crypto"
@@ -28,7 +29,10 @@ func Login(store *store.SqliteStore) http.HandlerFunc {
 			return
 		}
 
+		log.Printf("Attempting login for user '%s'. Hash from DB: '%s'", user.Username, user.PasswordHash)
+
 		if !crypto.CheckPasswordHash(creds.Password, user.PasswordHash) {
+			log.Printf("Password check failed for user '%s'", user.Username)
 			web.JSONError(w, errors.New("invalid username or password"), http.StatusUnauthorized)
 			return
 		}
