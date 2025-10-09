@@ -106,8 +106,9 @@ func (s *SqliteStore) CreateInvite(inviterID, inviteeID int) error {
 		return err
 	}
 
-	_, err = s.DB.Exec(`INSERT INTO invites (inviter_id, invitee_id) VALUES (?, ?)`, inviterID, inviteeID)
-	return err
+	// Correctly handle the error from Exec by declaring a new variable or using a different one.
+	_, execErr := s.DB.Exec(`INSERT INTO invites (inviter_id, invitee_id) VALUES (?, ?)`, inviterID, inviteeID)
+	return execErr
 }
 
 func (s *SqliteStore) GetInvites(userID int) (*sql.Rows, error) {
