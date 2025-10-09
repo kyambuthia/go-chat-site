@@ -88,8 +88,7 @@ func (h *InviteHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, "accepted"); err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
-		return
-	}
+		return	}
 
 	w.WriteHeader(http.StatusOK)
 }

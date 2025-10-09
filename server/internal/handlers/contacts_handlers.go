@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type ContactsHandler struct {
@@ -14,13 +16,13 @@ type ContactsHandler struct {
 func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value("userID").(int)
 	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
 		return
 	}
 
 	rows, err := h.Store.GetContacts(userID)
 	if err != nil {
-		http.Error(w, "Failed to get contacts", http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
@@ -29,7 +31,7 @@ func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var contact store.User
 		if err := rows.Scan(&contact.ID, &contact.Username, &contact.DisplayName, &contact.AvatarURL); err != nil {
-			http.Error(w, "Failed to scan contact", http.StatusInternalServerError)
+			web.JSONError(w, err, http.StatusInternalServerError)
 			return
 		}
 		contacts = append(contacts, contact)
@@ -46,18 +48,18 @@ func (h *ContactsHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		web.JSONError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	user, err := h.Store.GetUserByUsername(req.Username)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
+		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
 		return
 	}
 
 	if err := h.Store.AddContact(userID, user.ID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
@@ -72,12 +74,12 @@ func (h *ContactsHandler) RemoveContact(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		web.JSONError(w, err, http.StatusBadRequest)
 		return
 	}
 
 	if err := h.Store.RemoveContact(userID, req.ContactID); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
