@@ -2,9 +2,9 @@ package auth
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/api"
 	"github.com/kyambuthia/go-chat-site/server/internal/crypto"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 )
@@ -17,25 +17,24 @@ func Login(store *store.SqliteStore) http.HandlerFunc {
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			api.JSONError(w, err, http.StatusBadRequest)
 			return
 		}
 
 		user, err := store.GetUserByUsername(creds.Username)
 		if err != nil {
-			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+			api.JSONError(w, err, http.StatusUnauthorized)
 			return
 		}
 
 		if !crypto.CheckPasswordHash(creds.Password, user.PasswordHash) {
-			http.Error(w, "Invalid username or password", http.StatusUnauthorized)
+			api.JSONError(w, err, http.StatusUnauthorized)
 			return
 		}
 
 		token, err := GenerateToken(user.ID)
 		if err != nil {
-			log.Printf("Failed to generate token: %v", err)
-			http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+			api.JSONError(w, err, http.StatusInternalServerError)
 			return
 		}
 
