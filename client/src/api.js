@@ -52,16 +52,20 @@ export const loginUser = async (username, password) => {
 
 export const getContacts = () => apiRequest("/api/contacts");
 
-export const addContact = (username) => {
-  return apiRequest("/api/contacts/add", {
+
+
+export const getInvites = () => apiRequest("/api/invites");
+
+export const acceptInvite = (inviteID) => {
+  return apiRequest("/api/invites/accept", {
     method: "POST",
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ invite_id: inviteID }),
   });
 };
 
-export const removeContact = (contactID) => {
-  return apiRequest("/api/contacts/remove", {
+export const rejectInvite = (inviteID) => {
+  return apiRequest("/api/invites/reject", {
     method: "POST",
-    body: JSON.stringify({ contact_id: contactID }),
+    body: JSON.stringify({ invite_id: inviteID }),
   });
 };

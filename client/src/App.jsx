@@ -3,6 +3,7 @@ import Login from "./components/Login";
 import Register from "./components/Register";
 import Chat from "./components/Chat";
 import ContactsPage from "./components/ContactsPage";
+import InvitesPage from "./components/InvitesPage";
 import { setToken } from "./api";
 
 function App() {
@@ -69,10 +70,11 @@ function App() {
         <nav className="main-nav">
           <button onClick={() => setCurrentPage("chat")} disabled={currentPage === "chat"}>Chat</button>
           <button onClick={() => setCurrentPage("contacts")} disabled={currentPage === "contacts"}>Contacts</button>
+          <button onClick={() => setCurrentPage("invites")} disabled={currentPage === "invites"}>Invites</button>
           <button onClick={handleLogout} className="logout-button">Logout</button>
         </nav>
         <div className="chat-container">
-          {currentPage === "chat" ? <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={handleSelectContact} /> : <ContactsPage setSelectedContact={handleSelectContact} />}
+          {currentPage === "chat" ? <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={handleSelectContact} /> : currentPage === "contacts" ? <ContactsPage setSelectedContact={handleSelectContact} /> : <InvitesPage />}
         </div>
       </div>
     );

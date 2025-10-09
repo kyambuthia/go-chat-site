@@ -16,13 +16,14 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
   const handleSendMessage = () => {
     if (newMessage.trim() && selectedContact) {
       const message = {
+        id: Date.now(), // Simple unique ID
         type: "direct_message",
         to: selectedContact.username, // Assuming the API uses Username
         body: newMessage,
       };
       ws.send(JSON.stringify(message));
       // Add the message to the local state to display it immediately
-      setMessages([...messages, { from: "Me", body: newMessage }]);
+      setMessages([...messages, { ...message, from: "Me", sent: true, delivered: false }]);
       setNewMessage("");
     }
   };
@@ -35,12 +36,14 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
     <div className="chat-window">
       <div className="chat-header">
         <button onClick={onBack}>Back</button>
-        <h2>{selectedContact.username}</h2>
+        <img src={selectedContact.avatar_url} alt={selectedContact.display_name} />
+        <h2>{selectedContact.display_name}</h2>
       </div>
       <div className="messages">
         {messages.map((msg, index) => (
-          <div key={index} className={`message ${msg.from === 'Me' ? 'sent' : 'received'}`}>
-            <b>{msg.from || selectedContact.username}:</b> {msg.body}
+          <div key={index} className={`message ${msg.sent ? 'sent' : 'received'}`}>
+            {msg.body}
+            {msg.sent && <span className="tick">{msg.delivered ? '✔' : ''}</span>}
           </div>
         ))}
       </div>
@@ -74,7 +77,15 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
     if (selectedContact) {
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
-        setMessages((prevMessages) => [...prevMessages, message]);
+        if (message.type === "message_ack") {
+          setMessages((prevMessages) =>
+            prevMessages.map((msg) =>
+              msg.id === message.id ? { ...msg, delivered: true } : msg
+            )
+          );
+        } else {
+          setMessages((prevMessages) => [...prevMessages, message]);
+        }
       };
     }
   }, [ws, selectedContact]);

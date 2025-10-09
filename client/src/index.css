@@ -194,6 +194,12 @@ button:hover {
     align-self: flex-end;
 }
 
+.tick {
+    font-size: 0.8rem;
+    color: #888;
+    margin-left: 0.5rem;
+}
+
 .message.received {
     background-color: var(--text-color);
     color: var(--background-color);
