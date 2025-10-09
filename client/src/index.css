@@ -3,9 +3,9 @@
     --primary-bg: #ffffff;
     --secondary-bg: #f0f0f0;
     --text-color: #000000;
-    --border-color: #cccccc;
-    --accent-color: #007bff; /* A subtle blue for active states/buttons */
-    --danger-color: #dc3545; /* For logout */
+    --border-color: #333333;
+    --accent-color: #555555; /* Darker gray for active states/buttons */
+    --danger-color: #cc0000; /* Red for logout, as it's a destructive action */
     --spacing-xs: 0.5rem;
     --spacing-sm: 1rem;
     --spacing-md: 1.5rem;
@@ -80,6 +80,7 @@ nav button {
 
 nav button:hover:not(.active) {
     background-color: var(--border-color);
+    color: var(--primary-bg);
 }
 
 nav button.active {
@@ -106,7 +107,7 @@ textarea {
     padding: var(--spacing-xs);
     margin-bottom: var(--spacing-sm);
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 0px; /* Wireframe look */
     background-color: var(--primary-bg);
     color: var(--text-color);
 }
@@ -114,7 +115,7 @@ textarea {
 button {
     padding: var(--spacing-xs) var(--spacing-sm);
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 0px; /* Wireframe look */
     background-color: var(--primary-bg);
     color: var(--text-color);
     cursor: pointer;
@@ -133,8 +134,9 @@ button.primary {
 }
 
 button.primary:hover {
-    background-color: darken(var(--accent-color), 10%);
-    border-color: darken(var(--accent-color), 10%);
+    background-color: var(--text-color);
+    color: var(--primary-bg);
+    border-color: var(--text-color);
 }
 
 button.danger {
@@ -196,7 +198,7 @@ main {
     flex-direction: column;
     height: 100%;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 0px; /* Wireframe look */
     overflow: hidden;
 }
 
@@ -237,7 +239,7 @@ main {
 .message {
     max-width: 70%;
     padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: 15px;
+    border-radius: 0px; /* Wireframe look */
     margin-bottom: var(--spacing-xs);
     word-wrap: break-word;
     line-height: 1.4;
@@ -247,7 +249,6 @@ main {
     align-self: flex-end;
     background-color: var(--accent-color);
     color: var(--primary-bg);
-    border-bottom-right-radius: 5px; /* Tail effect */
 }
 
 .message.received {
@@ -255,7 +256,6 @@ main {
     background-color: var(--secondary-bg);
     color: var(--text-color);
     border: 1px solid var(--border-color);
-    border-bottom-left-radius: 5px; /* Tail effect */
 }
 
 .input-area {
@@ -276,7 +276,7 @@ main {
     display: flex;
     flex-direction: column;
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 0px; /* Wireframe look */
     overflow: hidden;
     height: 100%;
 }
@@ -321,7 +321,7 @@ main {
 .empty-contacts, .empty-chat-message {
     padding: var(--spacing-md);
     text-align: center;
-    color: #666;
+    color: var(--accent-color);
 }
 
 .empty-contacts h2 {
@@ -336,7 +336,7 @@ main {
 .invite {
     padding: var(--spacing-sm);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 0px; /* Wireframe look */
     margin: var(--spacing-sm);
     background-color: var(--primary-bg);
 }
@@ -356,6 +356,14 @@ main {
     color: var(--accent-color);
 }
 
+.success-message {
+    color: green;
+}
+
+.error-message {
+    color: var(--danger-color);
+}
+
 /* --- Account Page --- */
 .account-page {
     padding: var(--spacing-sm);
@@ -363,8 +371,9 @@ main {
     flex-direction: column;
     gap: var(--spacing-sm);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 0px; /* Wireframe look */
     margin: var(--spacing-sm);
+    background-color: var(--primary-bg);
 }
 
 .account-page h2 {
@@ -376,7 +385,7 @@ main {
 .wallet-details p {
     padding: var(--spacing-xs);
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 0px; /* Wireframe look */
     background-color: var(--secondary-bg);
 }
 
@@ -392,7 +401,7 @@ main {
         height: calc(100% - 40px); /* Adjust for fixed nav height */
         margin-top: 20px; /* Push down from top */
         margin-bottom: 20px; /* Push up from bottom */
-        border-radius: 8px;
+        border-radius: 0px; /* Wireframe look */
     }
 
     .app-content {
@@ -410,7 +419,7 @@ main {
         left: 0;
         right: 0;
         width: auto; /* Let App container define width */
-        border-radius: 0 0 8px 8px; /* Match App container */
+        border-radius: 0px; /* Wireframe look */
     }
 
     .chat-container {
