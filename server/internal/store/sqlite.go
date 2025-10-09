@@ -53,9 +53,9 @@ func (s *SqliteStore) CreateUser(username, password string) (int, error) {
 }
 
 func (s *SqliteStore) GetUserByUsername(username string) (*User, error) {
-	row := s.DB.QueryRow(`SELECT id, password_hash FROM users WHERE username = ?`, username)
-	user := &User{Username: username}
-	err := row.Scan(&user.ID, &user.PasswordHash)
+	row := s.DB.QueryRow(`SELECT id, username, password_hash FROM users WHERE username = ?`, username)
+	user := &User{}
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
@@ -63,9 +63,9 @@ func (s *SqliteStore) GetUserByUsername(username string) (*User, error) {
 }
 
 func (s *SqliteStore) GetUserByID(id int) (*User, error) {
-	row := s.DB.QueryRow(`SELECT id, username FROM users WHERE id = ?`, id)
+	row := s.DB.QueryRow(`SELECT id, username, password_hash FROM users WHERE id = ?`, id)
 	user := &User{}
-	err := row.Scan(&user.ID, &user.Username)
+	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
