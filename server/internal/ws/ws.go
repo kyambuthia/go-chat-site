@@ -1,7 +1,5 @@
-// ISSUE: A persistent syntax error on line 185 is preventing the server from compiling and starting.
-// This is the primary reason login and signup are failing, as the server is not running.
+// Fixed syntax error and added robust error handling.
 
-// File: server/internal/ws/ws.go
 package ws
 
 import (
