@@ -39,8 +39,13 @@ func main() {
 
 	api := api.NewAPI(db, hub)
 
-	fmt.Println("Server listening on port 8081")
-	log.Fatal(http.ListenAndServe(":8081", api))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	fmt.Printf("Server listening on port %s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, api))
 }
 
 func findProjectRoot() (string, error) {
