@@ -12,26 +12,29 @@ type ContactsHandler struct {
 }
 
 func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(int)
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	rows, err := h.Store.GetContacts(userID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to get contacts", http.StatusInternalServerError)
 		return
 	}
 	defer rows.Close()
 
-	contacts := []store.User{}
+	var contacts []store.User
 	for rows.Next() {
-		var user store.User
-		if err := rows.Scan(&user.ID, &user.Username); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		var contact store.User
+		if err := rows.Scan(&contact.ID, &contact.Username, &contact.DisplayName, &contact.AvatarURL); err != nil {
+			http.Error(w, "Failed to scan contact", http.StatusInternalServerError)
 			return
 		}
-		contacts = append(contacts, user)
+		contacts = append(contacts, contact)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(contacts)
 }
 
@@ -47,20 +50,13 @@ func (h *ContactsHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	row, err := h.Store.GetUserByUsername(req.Username)
+	user, err := h.Store.GetUserByUsername(req.Username)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	var contactID int
-	var passwordHash string
-	if err := row.Scan(&contactID, &passwordHash); err != nil {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
-	if err := h.Store.AddContact(userID, contactID); err != nil {
+	if err := h.Store.AddContact(userID, user.ID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
