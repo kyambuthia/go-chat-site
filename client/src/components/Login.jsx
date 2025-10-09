@@ -30,6 +30,4 @@ export default function Login({ onLogin, onShowRegister }) {
             {error && <p style={{color: 'red'}}>{error}</p>}
         </form>
     );
-}
-
-export default Login;
+  }
