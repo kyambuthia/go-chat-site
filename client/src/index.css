@@ -397,16 +397,16 @@ main {
 /* --- Responsive Layout --- */
 @media (min-width: 769px) {
     .App {
-        flex-direction: row; /* Desktop: side-by-side chat/contacts */
-        height: 100%; /* Let content dictate height, or use a fixed height for the app */
-        margin-top: 0; /* No need for margin-top */
-        margin-bottom: 0; /* No need for margin-bottom */
+        flex-direction: column; /* Desktop: stack content vertically */
+        height: 100%;
+        margin-top: 0;
+        margin-bottom: 0;
         border-radius: 0px; /* Wireframe look */
         overflow: hidden; /* Allow internal scrolling */
     }
 
     .app-content {
-        padding-bottom: 0; /* No need for bottom padding on desktop */
+        padding-bottom: calc(var(--spacing-sm) + 40px); /* Space for bottom nav */
     }
 
     main {
@@ -415,21 +415,28 @@ main {
     }
 
     nav {
-        position: relative; /* Relative to App container */
-        bottom: auto;
-        left: auto;
-        right: auto;
-        width: auto; /* Let App container define width */
+        position: fixed; /* Keep nav fixed at bottom */
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-width: var(--max-width-desktop); /* Match App width */
+        margin: 0 auto; /* Center with App */
         border-radius: 0px; /* Wireframe look */
     }
 
+    .chat-window, .contacts-list, .invite, .account-page {
+        margin: var(--spacing-sm) auto; /* Center components on desktop */
+        max-width: 600px; /* Constrain width for readability */
+    }
+
     .chat-container {
-        flex-direction: row;
+        flex-direction: column; /* Stack chat elements */
     }
 
     .contacts-list {
-        width: 300px;
-        max-width: 300px;
+        width: 100%;
+        max-width: 600px;
         height: auto;
         border-right: 1px solid var(--border-color);
         border-bottom: none;
