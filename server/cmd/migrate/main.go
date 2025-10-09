@@ -15,7 +15,7 @@ func main() {
 	}
 	defer db.Close()
 
-	if err := migrate.RunMigrations(db, "../migrations"); err != nil {
+	if err := migrate.RunMigrations(db, "/home/brutus/projects/go-chat-site/server/migrations"); err != nil {
 		log.Fatal(err)
 	}
 }
