@@ -90,16 +90,22 @@ func (h *Hub) AddClient(c *client) error {
 		close(existing.send)
 	}
 	h.clients[c.userID] = c
+
+	// Broadcast online status to all other clients
+	go h.Broadcast(Message{Type: "user_online", From: c.username})
+
 	return nil
 }
 
 // RemoveClient removes a client from the hub.
 func (h *Hub) RemoveClient(userID int) {
 	h.mu.Lock()
-	if c, ok := h.clients[userID]; ok {
-		c.conn.Close()
-		close(c.send)
+	client, ok := h.clients[userID]
+	if ok {
+		close(client.send)
 		delete(h.clients, userID)
+		// Broadcast offline status to all other clients
+		go h.Broadcast(Message{Type: "user_offline", From: client.username})
 	}
 	h.mu.Unlock()
 }

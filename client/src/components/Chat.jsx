@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getContacts } from "../api";
 
-function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
+function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnline }) {
   const [newMessage, setNewMessage] = useState("");
 
   const handleSendMessage = () => {
@@ -26,7 +26,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
     <div className="chat-window">
       <div className="chat-header">
         <button onClick={onBack} className="back-button">←</button>
-        <div className="avatar-placeholder">{selectedContact.username.charAt(0).toUpperCase()}</div>
+        <div className={`avatar-placeholder ${isOnline ? 'online' : ''}`}>{selectedContact.username.charAt(0).toUpperCase()}</div>
         <h2>{selectedContact.display_name || selectedContact.username}</h2>
       </div>
       <div className="messages">
@@ -51,7 +51,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
   );
 }
 
-export default function Chat({ ws, selectedContact, setSelectedContact }) {
+export default function Chat({ ws, selectedContact, setSelectedContact, onlineUsers }) {
   const [messages, setMessages] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +75,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
   }, []);
 
   useEffect(() => {
-    if (selectedContact) {
+    if (ws) {
       ws.onmessage = (event) => {
         const message = JSON.parse(event.data);
         if (message.type === "message_ack") {
@@ -125,7 +125,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
             <ul>
               {contacts.map((contact) => (
                 <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-                  <div className="avatar-placeholder">{contact.username.charAt(0).toUpperCase()}</div>
+                  <div className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>{contact.username.charAt(0).toUpperCase()}</div>
                   <span>{contact.display_name || contact.username}</span>
                 </li>
               ))}
@@ -143,6 +143,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
       messages={messages}
       setMessages={setMessages}
       onBack={() => setSelectedContact(null)}
+      isOnline={onlineUsers.includes(selectedContact.username)}
     />
   );
 }

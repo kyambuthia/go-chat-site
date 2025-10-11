@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { getContacts } from "../api";
 import Invite from "./Invite";
 
-export default function Contacts({ setSelectedContact }) {
+export default function Contacts({ setSelectedContact, onlineUsers }) {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,7 +45,7 @@ export default function Contacts({ setSelectedContact }) {
         <ul>
           {contacts.map((contact) => (
             <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-              <div className="avatar-placeholder">{contact.username.charAt(0).toUpperCase()}</div>
+              <div className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>{contact.username.charAt(0).toUpperCase()}</div>
               <span>{contact.display_name || contact.username}</span>
             </li>
           ))}

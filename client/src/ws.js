@@ -1,8 +1,8 @@
 export function connectWebSocket(token) {
-	const ws = new WebSocket(`ws://${window.location.host}/ws`);
+	const ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
 
 	ws.onopen = () => {
-		ws.send(JSON.stringify({ type: "auth", token }));
+		console.log("WebSocket connected");
 	};
 
 	return ws;

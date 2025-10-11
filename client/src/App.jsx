@@ -7,6 +7,8 @@ import InvitesPage from "./components/InvitesPage";
 import AccountPage from "./components/AccountPage"; // Import AccountPage
 import { setToken } from "./api";
 
+import { connectWebSocket } from "./ws";
+
 const WS_URL = "ws://localhost:5173/ws";
 
 function App() {
@@ -15,12 +17,24 @@ function App() {
   const [showRegister, setShowRegister] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
   const [activeTab, setActiveTab] = useState("chat");
+  const [onlineUsers, setOnlineUsers] = useState([]);
 
   useEffect(() => {
     if (isLoggedIn) {
       const token = localStorage.getItem("token");
-      const socket = new WebSocket(`${WS_URL}?token=${token}`);
+      const socket = connectWebSocket(token);
       setWs(socket);
+
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "user_online") {
+          setOnlineUsers((prevOnlineUsers) => [...prevOnlineUsers, message.from]);
+        } else if (message.type === "user_offline") {
+          setOnlineUsers((prevOnlineUsers) =>
+            prevOnlineUsers.filter((user) => user !== message.from)
+          );
+        }
+      };
 
       return () => {
         socket.close();
@@ -57,15 +71,15 @@ function App() {
 
     switch (activeTab) {
       case "chat":
-        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} />;
+        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
       case "contacts":
-        return <ContactsPage setSelectedContact={setSelectedContact} />;
+        return <ContactsPage setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
       case "invites":
         return <InvitesPage />;
       case "account": // Add account case
         return <AccountPage handleLogout={handleLogout} />;
       default:
-        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} />;
+        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
     }
   };
 

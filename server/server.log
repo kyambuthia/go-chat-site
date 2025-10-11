@@ -1,0 +1,80 @@
+2025/10/09 20:31:41 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:31:43 error: no such column: u.display_name
+2025/10/09 20:31:43 error: no such column: u.display_name
+2025/10/09 20:31:52 error: no such table: wallets
+2025/10/09 20:31:52 error: no such table: wallets
+2025/10/09 20:32:19 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:32:21 error: no such column: u.display_name
+2025/10/09 20:32:21 error: no such column: u.display_name
+2025/10/09 20:32:22 error: no such column: u.display_name
+2025/10/09 20:32:22 error: no such column: u.display_name
+2025/10/09 20:32:25 error: no such table: invites
+2025/10/09 20:32:25 error: no such table: invites
+2025/10/09 20:32:26 error: no such table: wallets
+2025/10/09 20:32:26 error: no such table: wallets
+2025/10/09 20:32:26 error: no such column: u.display_name
+2025/10/09 20:32:26 error: no such column: u.display_name
+2025/10/09 20:32:27 error: no such column: u.display_name
+2025/10/09 20:32:27 error: no such column: u.display_name
+2025/10/09 20:32:27 error: no such table: invites
+2025/10/09 20:32:27 error: no such table: invites
+2025/10/09 20:32:27 error: no such table: wallets
+2025/10/09 20:32:27 error: no such table: wallets
+2025/10/09 20:35:28 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:35:29 error: no such column: u.display_name
+2025/10/09 20:35:29 error: no such column: u.display_name
+2025/10/09 20:35:35 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:35:37 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:35:38 error: no such column: u.display_name
+2025/10/09 20:35:38 error: no such column: u.display_name
+2025/10/09 20:35:39 error: no such column: u.display_name
+2025/10/09 20:35:39 error: no such column: u.display_name
+2025/10/09 20:35:39 error: no such column: u.display_name
+2025/10/09 20:35:39 error: no such column: u.display_name
+2025/10/09 20:35:39 error: no such table: invites
+2025/10/09 20:35:39 error: no such table: invites
+2025/10/09 20:35:40 error: no such table: wallets
+2025/10/09 20:35:40 error: no such table: wallets
+2025/10/09 20:35:41 error: no such column: u.display_name
+2025/10/09 20:35:41 error: no such column: u.display_name
+2025/10/09 20:36:49 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:36:50 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$yByMbNpg/jTjlF91bOPVbeXynJKfzHkC49EGnavuYyPK71ntXGWta'
+2025/10/09 20:36:52 error: no such column: u.display_name
+2025/10/09 20:36:52 error: no such column: u.display_name
+2025/10/09 20:38:09 error: no such table: users
+2025/10/09 20:38:11 error: no such table: users
+2025/10/09 20:41:15 error: UNIQUE constraint failed: users.username
+2025/10/09 20:41:18 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:44:03 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:44:04 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:44:47 Attempting login for user 'kyambuthia'. Hash from DB: '$2a$14$k7oNnB3QGRy69jYVlBRxPuCnJ2lFp0DmIZMdPVCHq0G7LIAmLhHBK'
+2025/10/09 20:44:49 WebSocket handler called
+2025/10/09 20:44:49 Authenticating token
+2025/10/09 20:44:49 Authentication successful, upgrading connection
+2025/10/09 20:44:49 Client added, launching read/write loops
+2025/10/09 20:44:49 Starting read loop for client 2
+2025/10/09 20:44:49 Starting write loop for client 2
+2025/10/09 20:45:32 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:45:33 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:55:22 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:55:23 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:58:51 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:58:52 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/09 20:59:22 Attempting login for user 'kyambuthia'. Hash from DB: '$2a$14$k7oNnB3QGRy69jYVlBRxPuCnJ2lFp0DmIZMdPVCHq0G7LIAmLhHBK'
+2025/10/09 20:59:25 WebSocket handler called
+2025/10/09 20:59:25 Authenticating token
+2025/10/09 20:59:25 Authentication successful, upgrading connection
+2025/10/09 20:59:25 Client added, launching read/write loops
+2025/10/09 20:59:25 Starting read loop for client 2
+2025/10/09 20:59:25 Starting write loop for client 2
+2025/10/11 15:42:54 Attempting login for user 'kyambuthia'. Hash from DB: '$2a$14$k7oNnB3QGRy69jYVlBRxPuCnJ2lFp0DmIZMdPVCHq0G7LIAmLhHBK'
+2025/10/11 15:42:57 WebSocket handler called
+2025/10/11 15:42:57 Authenticating token
+2025/10/11 15:42:57 Authentication successful, upgrading connection
+2025/10/11 15:42:57 Client added, launching read/write loops
+2025/10/11 15:42:57 Starting read loop for client 2
+2025/10/11 15:42:57 Starting write loop for client 2
+2025/10/11 15:43:46 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 15:43:47 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 15:48:05 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 15:48:05 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
