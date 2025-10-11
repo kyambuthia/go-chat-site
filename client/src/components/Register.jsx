@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { registerUser } from "../api";
+import { Label } from '@radix-ui/react-label';
 
 export default function Register({ onRegisterSuccess }) {
   const [username, setUsername] = useState("");
@@ -24,7 +25,7 @@ export default function Register({ onRegisterSuccess }) {
       <h2>Register</h2>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="username">Username</label>
+          <Label htmlFor="username">Username</Label>
           <input
             id="username"
             type="text"
@@ -35,7 +36,7 @@ export default function Register({ onRegisterSuccess }) {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="password">Password</label>
+          <Label htmlFor="password">Password</Label>
           <input
             id="password"
             type="password"
