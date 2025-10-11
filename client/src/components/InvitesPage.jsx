@@ -25,15 +25,22 @@ export default function InvitesPage() {
   return (
     <div className="invites-page">
       <h2>Pending Invites</h2>
-      <ul>
-        {invites.map((invite) => (
-          <li key={invite.id}>
-            <span>{invite.inviter_username}</span>
-            <button onClick={() => handleAccept(invite.id)}>Accept</button>
-            <button onClick={() => handleReject(invite.id)}>Reject</button>
-          </li>
-        ))}
-      </ul>
+      {invites.length === 0 ? (
+        <p>No pending invites.</p>
+      ) : (
+        <ul>
+          {invites.map((invite) => (
+            <li key={invite.id}>
+              <div className="avatar-placeholder">{invite.inviter_username.charAt(0).toUpperCase()}</div>
+              <span>{invite.inviter_username}</span>
+              <div className="invite-actions">
+                <button onClick={() => handleAccept(invite.id)} className="accept">Accept</button>
+                <button onClick={() => handleReject(invite.id)} className="reject">Reject</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
