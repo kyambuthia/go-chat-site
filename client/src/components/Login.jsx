@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { loginUser } from "../api";
+import { Label } from '@radix-ui/react-label';
 
 export default function Login({ onLogin, onShowRegister }) {
   const [username, setUsername] = useState("");
@@ -25,7 +26,7 @@ export default function Login({ onLogin, onShowRegister }) {
       <h2>Login</h2>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="username">Username</label>
+          <Label htmlFor="username">Username</Label>
           <input
             id="username"
             type="text"
@@ -36,7 +37,7 @@ export default function Login({ onLogin, onShowRegister }) {
           />
         </div>
         <div className="form-group">
-          <label htmlFor="password">Password</label>
+          <Label htmlFor="password">Password</Label>
           <input
             id="password"
             type="password"

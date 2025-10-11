@@ -6,6 +6,7 @@ import ContactsPage from "./components/ContactsPage";
 import InvitesPage from "./components/InvitesPage";
 import AccountPage from "./components/AccountPage"; // Import AccountPage
 import { setToken } from "./api";
+import { ChatBubbleIcon, PersonIcon, EnvelopeClosedIcon, GearIcon } from '@radix-ui/react-icons';
 
 import { connectWebSocket } from "./ws";
 
@@ -90,17 +91,17 @@ function App() {
       </main>
       {isLoggedIn && !selectedContact && (
         <nav>
-          <button onClick={() => setActiveTab("chat")} className={activeTab === "chat" ? "active" : ""}>
-            Chat
+          <button onClick={() => setActiveTab("chat")} className={`nav-item ${activeTab === "chat" ? "active" : ""}`}>
+            <ChatBubbleIcon /><span>Chat</span>
           </button>
-          <button onClick={() => setActiveTab("contacts")} className={activeTab === "contacts" ? "active" : ""}>
-            Contacts
+          <button onClick={() => setActiveTab("contacts")} className={`nav-item ${activeTab === "contacts" ? "active" : ""}`}>
+            <PersonIcon /><span>Contacts</span>
           </button>
-          <button onClick={() => setActiveTab("invites")} className={activeTab === "invites" ? "active" : ""}>
-            Invites
+          <button onClick={() => setActiveTab("invites")} className={`nav-item ${activeTab === "invites" ? "active" : ""}`}>
+            <EnvelopeClosedIcon /><span>Invites</span>
           </button>
-          <button onClick={() => setActiveTab("account")} className={activeTab === "account" ? "active" : ""}>
-            Account
+          <button onClick={() => setActiveTab("account")} className={`nav-item ${activeTab === "account" ? "active" : ""}`}>
+            <GearIcon /><span>Account</span>
           </button>
         </nav>
       )}
