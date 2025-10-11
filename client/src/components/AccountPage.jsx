@@ -37,27 +37,18 @@ export default function AccountPage({ handleLogout }) {
     <div className="account-page">
       <h2>My Account</h2>
       {user && (
-        <div className="user-details">
-          <p>
-            <strong>Username:</strong> {user.username}
-          </p>
-          {user.display_name && (
-            <p>
-              <strong>Display Name:</strong> {user.display_name}
-            </p>
-          )}
-          {user.avatar_url && (
-            <p>
-              <strong>Avatar:</strong> <img src={user.avatar_url} alt="Avatar" className="avatar-preview" />
-            </p>
-          )}
+        <div className="user-card">
+          <div className="avatar-placeholder">{user.username.charAt(0).toUpperCase()}</div>
+          <div className="user-info">
+            <h3>{user.display_name || user.username}</h3>
+            <p>@{user.username}</p>
+          </div>
         </div>
       )}
       {wallet && (
-        <div className="wallet-details">
-          <p>
-            <strong>Balance:</strong> ${wallet.balance ? wallet.balance.toFixed(2) : "0.00"}
-          </p>
+        <div className="wallet-card">
+          <h4>Wallet Balance</h4>
+          <p>${wallet.balance ? wallet.balance.toFixed(2) : "0.00"}</p>
         </div>
       )}
       <button onClick={handleLogout} className="logout-button danger">
