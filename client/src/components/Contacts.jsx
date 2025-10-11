@@ -32,29 +32,25 @@ export default function Contacts({ setSelectedContact }) {
     return <div className="contacts-list">Error: {error}</div>;
   }
 
-  if (contacts.length === 0) {
-    return (
-      <div className="contacts-list">
-        <div className="empty-contacts">
-          <h2>No Contacts Yet</h2>
-          <p>Send an invite to start a conversation.</p>
-          <Invite />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="contacts-list">
       <h2>My Contacts</h2>
-      <ul>
-        {contacts.map((contact) => (
-          <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-            {/* <img src={contact.avatar_url} alt={contact.display_name} /> */}
-            <span>{contact.display_name || contact.username}</span>
-          </li>
-        ))}
-      </ul>
+      {contacts.length === 0 ? (
+        <div className="empty-contacts">
+          <h3>No Contacts Yet</h3>
+          <p>Send an invite to start a conversation.</p>
+          <Invite />
+        </div>
+      ) : (
+        <ul>
+          {contacts.map((contact) => (
+            <li key={contact.id} onClick={() => setSelectedContact(contact)}>
+              <div className="avatar-placeholder">{contact.username.charAt(0).toUpperCase()}</div>
+              <span>{contact.display_name || contact.username}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
