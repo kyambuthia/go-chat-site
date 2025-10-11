@@ -78,3 +78,29 @@
 2025/10/11 15:43:47 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
 2025/10/11 15:48:05 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
 2025/10/11 15:48:05 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 16:14:58 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 16:14:59 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 16:15:14 Attempting login for user 'kyambuthia'. Hash from DB: '$2a$14$k7oNnB3QGRy69jYVlBRxPuCnJ2lFp0DmIZMdPVCHq0G7LIAmLhHBK'
+2025/10/11 16:15:19 WebSocket handler called
+2025/10/11 16:15:19 Authenticating token
+2025/10/11 16:15:19 Authentication successful, upgrading connection
+2025/10/11 16:15:19 Client added, launching read/write loops
+2025/10/11 16:15:19 Starting read loop for client 2
+2025/10/11 16:15:19 Starting write loop for client 2
+2025/10/11 16:16:45 Exiting read loop for client 2
+2025/10/11 16:16:45 Exiting write loop for client 2
+2025/10/11 16:17:05 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 16:17:06 Attempting login for user 'kyamz'. Hash from DB: '$2a$14$LTA4bZTUt4dWLaNuAK5qP.thot.cDKjXD21NMrK0rDzaPGuZOIGIC'
+2025/10/11 16:17:07 WebSocket handler called
+2025/10/11 16:17:07 Authenticating token
+2025/10/11 16:17:07 Authentication successful, upgrading connection
+2025/10/11 16:17:07 Client added, launching read/write loops
+2025/10/11 16:17:07 Starting read loop for client 1
+2025/10/11 16:17:07 Starting write loop for client 1
+2025/10/11 16:20:10 Attempting login for user 'kyambuthia'. Hash from DB: '$2a$14$k7oNnB3QGRy69jYVlBRxPuCnJ2lFp0DmIZMdPVCHq0G7LIAmLhHBK'
+2025/10/11 16:20:16 WebSocket handler called
+2025/10/11 16:20:16 Authenticating token
+2025/10/11 16:20:16 Authentication successful, upgrading connection
+2025/10/11 16:20:16 Client added, launching read/write loops
+2025/10/11 16:20:16 Starting read loop for client 2
+2025/10/11 16:20:16 Starting write loop for client 2

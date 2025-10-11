@@ -1,3 +1,4 @@
+
 :root {
     --primary-bg: #f7f9fc;
     --secondary-bg: #ffffff;
@@ -40,12 +41,17 @@ body {
     margin: 0 auto;
     background-color: var(--secondary-bg);
     box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    height: 100%;
 }
 
 .app-content {
     flex-grow: 1;
     overflow-y: auto;
     padding: var(--spacing-lg);
+}
+
+.app-content.no-padding {
+    padding: 0;
 }
 
 nav {

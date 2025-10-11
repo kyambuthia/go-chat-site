@@ -85,10 +85,10 @@ function App() {
 
   return (
     <div className="App">
-      <main className="app-content">
+      <main className={`app-content ${selectedContact ? 'no-padding' : ''}`}>
         {renderContent()}
       </main>
-      {isLoggedIn && (
+      {isLoggedIn && !selectedContact && (
         <nav>
           <button onClick={() => setActiveTab("chat")} className={activeTab === "chat" ? "active" : ""}>
             Chat
