@@ -71,9 +71,9 @@ function App() {
 
   return (
     <div className="App">
-      <div className="app-content">
+      <main className="app-content">
         {renderContent()}
-      </div>
+      </main>
       {isLoggedIn && (
         <nav>
           <button onClick={() => setActiveTab("chat")} className={activeTab === "chat" ? "active" : ""}>
