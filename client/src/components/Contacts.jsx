@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getContacts } from "../api";
 import Invite from "./Invite";
+import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
 
 export default function Contacts({ setSelectedContact, onlineUsers }) {
   const [contacts, setContacts] = useState([]);
@@ -45,7 +46,10 @@ export default function Contacts({ setSelectedContact, onlineUsers }) {
         <ul>
           {contacts.map((contact) => (
             <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-              <div className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>{contact.username.charAt(0).toUpperCase()}</div>
+              <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>
+                <AvatarImage src="" alt="" />
+                <AvatarFallback>{contact.username.charAt(0).toUpperCase()}</AvatarFallback>
+              </Avatar>
               <span>{contact.display_name || contact.username}</span>
             </li>
           ))}
