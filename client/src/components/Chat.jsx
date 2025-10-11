@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { getContacts } from "../api";
-import { CheckIcon } from '@radix-ui/react-icons';
+import { CheckIcon, PaperPlaneIcon } from '@radix-ui/react-icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
 
 function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnline }) {
@@ -50,7 +50,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
           placeholder="Type a message..."
           onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
         />
-        <button onClick={handleSendMessage}>Send</button>
+        <button onClick={handleSendMessage} className="send-button"><PaperPlaneIcon className="send-button-icon" /></button>
       </div>
     </div>
   );

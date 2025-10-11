@@ -12,7 +12,7 @@
     --spacing-md: 16px;
     --spacing-lg: 24px;
     --max-width-desktop: 1200px;
-    --border-radius: 8px;
+    --border-radius: 12px;
 }
 
 * {
@@ -146,6 +146,22 @@ button {
     transition: background-color 0.2s, transform 0.1s;
 }
 
+.send-button {
+    padding: var(--spacing-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px; /* Set explicit width */
+    height: 48px; /* Set explicit height */
+    border-radius: 50%; /* Make it circular */
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.send-button-icon {
+    width: 1.2em;
+    height: 1.2em;
+}
+
 button:hover {
     background-color: #0056b3;
 }
@@ -229,6 +245,8 @@ button.danger:hover {
     max-width: 75%;
     margin-bottom: var(--spacing-sm);
     display: flex;
+    opacity: 0;
+    animation: slideInFromSide 0.3s ease-out forwards;
 }
 
 .message-body {
@@ -240,6 +258,7 @@ button.danger:hover {
 
 .message.sent {
     align-self: flex-end;
+    animation-name: slideInFromRight;
 }
 
 .message.sent .message-body {
@@ -250,6 +269,7 @@ button.danger:hover {
 
 .message.received {
     align-self: flex-start;
+    animation-name: slideInFromLeft;
 }
 
 .message.received .message-body {
@@ -258,6 +278,29 @@ button.danger:hover {
     border: 1px solid var(--border-color);
     border-bottom-left-radius: 4px;
 }
+
+@keyframes slideInFromLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes slideInFromRight {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
 
 .message-status-icon {
   margin-left: 5px;
@@ -284,6 +327,8 @@ button.danger:hover {
     flex-grow: 1;
     margin-right: var(--spacing-md);
     margin-bottom: 0;
+    border-radius: 9999px; /* Capsule shape */
+    padding: var(--spacing-sm) var(--spacing-md); /* Adjust padding for capsule */
 }
 
 .contacts-list {

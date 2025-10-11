@@ -35,20 +35,3 @@ bun run dev
 ```
 
 Navigate to the URL provided by the Vite dev server (usually `http://localhost:5173`). The client will proxy API requests to the Go backend.
-
-## Testing
-
-### Server
-
-```bash
-cd server
-go test ./...
-```
-
-### Client
-
-Client-side tests were removed during the migration to Vite and need to be re-written using a React-compatible testing framework.
-
-## API
-
-See [docs/design/api.md](docs/design/api.md) for API documentation.
