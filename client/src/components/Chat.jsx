@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { getContacts } from "../api";
+import { CheckIcon } from '@radix-ui/react-icons';
+import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
 
 function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnline }) {
   const [newMessage, setNewMessage] = useState("");
@@ -26,14 +28,17 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
     <div className="chat-window">
       <div className="chat-header">
         <button onClick={onBack} className="back-button">←</button>
-        <div className={`avatar-placeholder ${isOnline ? 'online' : ''}`}>{selectedContact.username.charAt(0).toUpperCase()}</div>
+        <Avatar className={`avatar-placeholder ${isOnline ? 'online' : ''}`}>
+          <AvatarImage src="" alt="" />
+          <AvatarFallback>{selectedContact.username.charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
         <h2>{selectedContact.display_name || selectedContact.username}</h2>
       </div>
       <div className="messages">
         {messages.map((msg, index) => (
           <div key={index} className={`message ${msg.sent ? 'sent' : 'received'}`}>
             <div className="message-body">{msg.body}</div>
-            {msg.sent && <span className="tick">{msg.delivered ? '✔' : ''}</span>}
+            {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
           </div>
         ))}
       </div>
@@ -120,12 +125,15 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         {contacts.length === 0 ? (
           <p className="empty-chat-message">Invite a friend from the Contacts tab to start chatting.</p>
         ) : (
-          <div className="contacts-list-small">
+          <div className="contacts-list">
             <h3>Your Contacts</h3>
             <ul>
               {contacts.map((contact) => (
                 <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-                  <div className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>{contact.username.charAt(0).toUpperCase()}</div>
+                  <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>
+                    <AvatarImage src="" alt="" />
+                    <AvatarFallback>{contact.username.charAt(0).toUpperCase()}</AvatarFallback>
+                  </Avatar>
                   <span>{contact.display_name || contact.username}</span>
                 </li>
               ))}
