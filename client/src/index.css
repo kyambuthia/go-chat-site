@@ -1,16 +1,18 @@
-/* Global Resets & Wireframe Look */
+
 :root {
-    --primary-bg: #ffffff;
-    --secondary-bg: #f0f0f0;
-    --text-color: #000000;
-    --border-color: #333333;
-    --accent-color: #555555; /* Darker gray for active states/buttons */
-    --danger-color: #cc0000; /* For logout, as it's a destructive action */
-    --spacing-xs: 0.5rem;
-    --spacing-sm: 1rem;
-    --spacing-md: 1.5rem;
-    --spacing-lg: 2rem;
-    --max-width-desktop: 960px;
+    --primary-bg: #f7f9fc;
+    --secondary-bg: #ffffff;
+    --text-color: #333333;
+    --border-color: #e0e0e0;
+    --accent-color: #007bff;
+    --danger-color: #dc3545;
+    --success-color: #28a745;
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --max-width-desktop: 1200px;
+    --border-radius: 8px;
 }
 
 * {
@@ -22,81 +24,78 @@
 html, body, #root, .App {
     height: 100%;
     width: 100%;
-    display: flex;
-    flex-direction: column;
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--primary-bg);
     color: var(--text-color);
-    line-height: 1.5;
+    line-height: 1.6;
 }
 
-/* Main App Container */
 .App {
+    display: flex;
+    flex-direction: column;
     max-width: var(--max-width-desktop);
     margin: 0 auto;
-    border-left: 1px solid var(--border-color);
-    border-right: 1px solid var(--border-color);
-    position: relative; /* For fixed bottom nav */
-    overflow: hidden; /* Hide scrollbars on main app if content overflows */
+    background-color: var(--secondary-bg);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
 
-/* Content Area (excluding nav) */
 .app-content {
     flex-grow: 1;
-    overflow-y: auto; /* Scrollable content */
-    padding-bottom: calc(var(--spacing-sm) + 40px); /* Space for bottom nav */
+    overflow-y: auto;
+    padding: var(--spacing-lg);
 }
 
-/* --- Navigation (Bottom Tabs) --- */
 nav {
     display: flex;
     justify-content: space-around;
     align-items: center;
     background-color: var(--secondary-bg);
     border-top: 1px solid var(--border-color);
-    padding: var(--spacing-xs) 0;
-    position: fixed;
-    bottom: 0;
-    width: 100%;
-    max-width: var(--max-width-desktop); /* Match App width */
-    margin: 0 auto; /* Center with App */
-    z-index: 1000;
+    padding: var(--spacing-sm) 0;
 }
 
 nav button {
-    flex: 1;
     background: none;
     border: none;
-    color: var(--text-color);
-    padding: var(--spacing-sm) var(--spacing-xs);
+    color: #888;
+    padding: var(--spacing-sm) var(--spacing-md);
     cursor: pointer;
-    font-size: 0.9rem;
-    transition: background-color 0.2s, color 0.2s;
-    border-radius: 0;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: color 0.2s;
+    border-radius: var(--border-radius);
 }
 
-nav button:hover:not(.active) {
-    background-color: var(--border-color);
-    color: var(--primary-bg);
+nav button:hover {
+    color: var(--accent-color);
 }
 
 nav button.active {
     color: var(--accent-color);
-    font-weight: bold;
-    border-bottom: 2px solid var(--accent-color);
+    font-weight: 700;
 }
 
-/* --- General Elements --- */
 h1, h2, h3 {
-    margin-bottom: var(--spacing-sm);
-    color: var(--text-color);
+    margin-bottom: var(--spacing-md);
+    color: #111;
+    font-weight: 700;
 }
 
 p {
-    margin-bottom: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+}
+
+.form-group {
+    margin-bottom: var(--spacing-md);
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: var(--spacing-sm);
+    font-weight: 600;
 }
 
 input[type="text"],
@@ -104,189 +103,173 @@ input[type="password"],
 input[type="email"],
 textarea {
     width: 100%;
-    padding: var(--spacing-xs);
-    margin-bottom: var(--spacing-sm);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
     border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
+    border-radius: var(--border-radius);
     background-color: var(--primary-bg);
     color: var(--text-color);
+    font-size: 1rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="email"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
 }
 
 button {
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
-    background-color: var(--primary-bg);
-    color: var(--text-color);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border: none;
+    border-radius: var(--border-radius);
+    background-color: var(--accent-color);
+    color: #fff;
     cursor: pointer;
-    transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: background-color 0.2s, transform 0.1s;
 }
 
 button:hover {
-    background-color: var(--secondary-bg);
-    border-color: var(--text-color);
+    background-color: #0056b3;
 }
 
-button.primary {
-    background-color: var(--accent-color);
-    color: var(--primary-bg);
-    border-color: var(--accent-color);
-}
-
-button.primary:hover {
-    background-color: var(--text-color);
-    color: var(--primary-bg);
-    border-color: var(--text-color);
+button:active {
+    transform: translateY(1px);
 }
 
 button.danger {
     background-color: var(--danger-color);
-    color: var(--primary-bg);
-    border-color: var(--danger-color);
 }
 
 button.danger:hover {
-    background-color: darken(var(--danger-color), 10%);
-    border-color: darken(var(--danger-color), 10%);
+    background-color: #c82333;
 }
 
-/* --- Auth Pages (Login/Register) --- */
 .auth-container {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100vh; /* Full viewport height */
-    padding: var(--spacing-sm);
-    text-align: center;
+    height: 100%;
+    padding: var(--spacing-lg);
 }
 
 .auth-container h2 {
-    margin-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    font-size: 2rem;
 }
 
 .auth-container form {
     width: 100%;
-    max-width: 300px;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-}
-
-.auth-container button {
-    width: 100%;
+    max-width: 400px;
 }
 
 .auth-switch-button {
-    margin-top: var(--spacing-sm);
+    margin-top: var(--spacing-md);
     background: none;
     border: none;
     color: var(--accent-color);
     cursor: pointer;
+    font-size: 0.9rem;
 }
 
-/* --- Main Content Area --- */
-.app-content {
-    flex-grow: 1;
-    overflow-y: auto; /* Scrollable content */
-    padding: var(--spacing-sm);
-    padding-bottom: calc(var(--spacing-sm) + 40px); /* Space for bottom nav */
-}
-
-/* --- Chat Component --- */
 .chat-window {
     display: flex;
     flex-direction: column;
     height: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
-    overflow: hidden;
 }
 
 .chat-header {
     display: flex;
     align-items: center;
-    padding: var(--spacing-sm);
+    padding: var(--spacing-md);
     border-bottom: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
 }
 
-.chat-header img {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    margin-right: var(--spacing-sm);
-    border: 1px solid var(--border-color);
+.chat-header .back-button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: #888;
+    margin-right: var(--spacing-md);
+    padding: 0;
 }
 
 .chat-header h2 {
     margin: 0;
-    font-size: 1.1rem;
-}
-
-.chat-header button {
-    margin-right: var(--spacing-sm);
-    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: 1.25rem;
 }
 
 .messages {
     flex-grow: 1;
     overflow-y: auto;
-    padding: var(--spacing-sm);
+    padding: var(--spacing-lg);
     display: flex;
     flex-direction: column;
 }
 
 .message {
-    max-width: 70%;
-    padding: var(--spacing-xs) var(--spacing-sm);
-    border-radius: 0px; /* Wireframe look */
-    margin-bottom: var(--spacing-xs);
+    max-width: 75%;
+    margin-bottom: var(--spacing-sm);
+    display: flex;
+}
+
+.message-body {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: 12px;
     word-wrap: break-word;
-    line-height: 1.4;
+    line-height: 1.5;
 }
 
 .message.sent {
     align-self: flex-end;
+}
+
+.message.sent .message-body {
     background-color: var(--accent-color);
-    color: var(--primary-bg);
+    color: #fff;
+    border-bottom-right-radius: 4px;
 }
 
 .message.received {
     align-self: flex-start;
-    background-color: var(--secondary-bg);
+}
+
+.message.received .message-body {
+    background-color: var(--primary-bg);
     color: var(--text-color);
     border: 1px solid var(--border-color);
+    border-bottom-left-radius: 4px;
 }
 
 .input-area {
     display: flex;
-    padding: var(--spacing-sm);
+    padding: var(--spacing-md);
     border-top: 1px solid var(--border-color);
     background-color: var(--secondary-bg);
 }
 
 .input-area input {
     flex-grow: 1;
-    margin-right: var(--spacing-sm);
+    margin-right: var(--spacing-md);
     margin-bottom: 0;
 }
 
-/* --- Contacts List --- */
 .contacts-list {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
-    overflow: hidden;
     height: 100%;
 }
 
 .contacts-list h2 {
-    padding: var(--spacing-sm);
+    padding-bottom: var(--spacing-md);
     border-bottom: 1px solid var(--border-color);
-    background-color: var(--secondary-bg);
-    margin-bottom: 0;
+    margin-bottom: var(--spacing-md);
 }
 
 .contacts-list ul {
@@ -299,181 +282,97 @@ button.danger:hover {
     display: flex;
     align-items: center;
     padding: var(--spacing-sm);
-    border-bottom: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
     cursor: pointer;
-}
-
-.contacts-list li:last-child {
-    border-bottom: none;
+    transition: background-color 0.2s;
 }
 
 .contacts-list li:hover {
-    background-color: var(--secondary-bg);
-}
-
-.contacts-list li img {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    margin-right: var(--spacing-sm);
-    border: 1px solid var(--border-color);
-}
-
-.empty-contacts, .empty-chat-message {
-    padding: var(--spacing-md);
-    text-align: center;
-    color: var(--accent-color);
-}
-
-.empty-contacts h2 {
-    margin-bottom: var(--spacing-sm);
-}
-
-.empty-contacts p {
-    margin-bottom: var(--spacing-md);
-}
-
-/* --- Invite Component --- */
-.invite {
-    padding: var(--spacing-sm);
-    border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
-    margin: var(--spacing-sm);
     background-color: var(--primary-bg);
 }
 
-.invite h2 {
-    margin-bottom: var(--spacing-md);
+.empty-contacts {
     text-align: center;
+    padding: var(--spacing-lg);
 }
 
-.invite form {
-    gap: var(--spacing-sm);
-}
-
-.invite p {
-    margin-top: var(--spacing-sm);
-    text-align: center;
-    color: var(--accent-color);
+.invite {
+    margin-top: var(--spacing-lg);
 }
 
 .success-message {
-    color: green;
+    color: var(--success-color);
+    margin-top: var(--spacing-md);
 }
 
 .error-message {
     color: var(--danger-color);
-}
-
-/* --- Account Page --- */
-.account-page {
-    padding: var(--spacing-sm);
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-sm);
-    border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
-    margin: var(--spacing-sm);
-    background-color: var(--primary-bg);
-}
-
-.account-page h2 {
-    text-align: center;
-    margin-bottom: var(--spacing-md);
-}
-
-.user-details p,
-.wallet-details p {
-    padding: var(--spacing-xs);
-    border: 1px solid var(--border-color);
-    border-radius: 0px; /* Wireframe look */
-    background-color: var(--secondary-bg);
-}
-
-.logout-button {
     margin-top: var(--spacing-md);
+}
+
+.avatar-placeholder {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--accent-color);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    margin-right: var(--spacing-md);
+}
+
+.invites-page ul {
+    list-style: none;
+}
+
+.invites-page li {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-md);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.invites-page li:last-child {
+    border-bottom: none;
+}
+
+.invite-actions {
+    margin-left: auto;
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.account-page .user-card {
+    display: flex;
+    align-items: center;
+    background-color: var(--primary-bg);
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-lg);
+}
+
+.account-page .user-info h3 {
+    margin-bottom: var(--spacing-xs);
+}
+
+.account-page .user-info p {
+    color: #888;
+    margin: 0;
+}
+
+.account-page .wallet-card {
+    background-color: var(--primary-bg);
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius);
+    margin-bottom: var(--spacing-lg);
+}
+
+.account-page .wallet-card h4 {
+    margin-bottom: var(--spacing-sm);
+}
+
+.account-page .logout-button {
     width: 100%;
-}
-
-/* --- Responsive Layout --- */
-@media (min-width: 769px) {
-    .App {
-        flex-direction: row; /* Desktop: side-by-side chat/contacts */
-        height: calc(100% - 40px); /* Adjust for fixed nav height */
-        margin-top: 20px; /* Push down from top */
-        margin-bottom: 20px; /* Push up from bottom */
-        border-radius: 0px; /* Wireframe look */
-    }
-
-    .app-content {
-        padding-bottom: 0; /* No need for bottom padding on desktop */
-    }
-
-    main {
-        flex-grow: 1;
-        padding: var(--spacing-sm);
-    }
-
-    nav {
-        position: absolute; /* Relative to App container */
-        bottom: 0;
-        left: 0;
-        right: 0;
-        width: auto; /* Let App container define width */
-        border-radius: 0px; /* Wireframe look */
-    }
-
-    .chat-container {
-        flex-direction: row;
-    }
-
-    .contacts-list {
-        width: 300px;
-        max-width: 300px;
-        height: auto;
-        border-right: 1px solid var(--border-color);
-        border-bottom: none;
-    }
-
-    .chat-window {
-        flex-grow: 1;
-        height: auto;
-    }
-
-    .contacts-list li img {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        margin-right: var(--spacing-sm);
-        border: 1px solid var(--border-color);
-    }
-}
-
-@media (max-width: 768px) {
-    .App {
-        border-left: none;
-        border-right: none;
-    }
-
-    nav {
-        border-radius: 0;
-    }
-
-    .auth-container {
-        min-height: auto;
-        height: 100%;
-        justify-content: flex-start;
-        padding-top: var(--spacing-lg);
-    }
-
-    main {
-        padding: var(--spacing-sm) var(--spacing-xs);
-    }
-
-    .chat-window, .contacts-list, .invite, .account-page {
-        margin: 0;
-        border-radius: 0;
-        border-left: none;
-        border-right: none;
-    }
 }
