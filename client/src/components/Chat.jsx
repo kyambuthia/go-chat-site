@@ -4,25 +4,15 @@ import { getContacts } from "../api";
 function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
   const [newMessage, setNewMessage] = useState("");
 
-  // TODO: Fetch message history with selectedContact when it changes
-  // useEffect(() => {
-  //   if (selectedContact) {
-  //     getMessages(selectedContact.ID).then(response => {
-  //       setMessages(response.data);
-  //     });
-  //   }
-  // }, [selectedContact]);
-
   const handleSendMessage = () => {
     if (newMessage.trim() && selectedContact) {
       const message = {
-        id: Date.now(), // Simple unique ID
+        id: Date.now(),
         type: "direct_message",
-        to: selectedContact.username, // Assuming the API uses Username
+        to: selectedContact.username,
         body: newMessage,
       };
       ws.send(JSON.stringify(message));
-      // Add the message to the local state to display it immediately
       setMessages([...messages, { ...message, from: "Me", sent: true, delivered: false }]);
       setNewMessage("");
     }
@@ -35,14 +25,14 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
   return (
     <div className="chat-window">
       <div className="chat-header">
-        <button onClick={onBack}>Back</button>
-        {/* <img src={selectedContact.avatar_url} alt={selectedContact.display_name} /> */}
+        <button onClick={onBack} className="back-button">←</button>
+        <div className="avatar-placeholder">{selectedContact.username.charAt(0).toUpperCase()}</div>
         <h2>{selectedContact.display_name || selectedContact.username}</h2>
       </div>
       <div className="messages">
         {messages.map((msg, index) => (
           <div key={index} className={`message ${msg.sent ? 'sent' : 'received'}`}>
-            {msg.body}
+            <div className="message-body">{msg.body}</div>
             {msg.sent && <span className="tick">{msg.delivered ? '✔' : ''}</span>}
           </div>
         ))}
@@ -55,7 +45,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack }) {
           placeholder="Type a message..."
           onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
         />
-        <button onClick={handleSendMessage} className="primary">Send</button>
+        <button onClick={handleSendMessage}>Send</button>
       </div>
     </div>
   );
@@ -135,7 +125,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact }) {
             <ul>
               {contacts.map((contact) => (
                 <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-                  {/* <img src={contact.avatar_url} alt={contact.display_name} /> */}
+                  <div className="avatar-placeholder">{contact.username.charAt(0).toUpperCase()}</div>
                   <span>{contact.display_name || contact.username}</span>
                 </li>
               ))}
