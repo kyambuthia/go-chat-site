@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getMe, getWallet } from "../api";
+import { PersonIcon } from '@radix-ui/react-icons';
 
 export default function AccountPage({ handleLogout }) {
   const [user, setUser] = useState(null);
@@ -38,7 +39,9 @@ export default function AccountPage({ handleLogout }) {
       <h2>My Account</h2>
       {user && (
         <div className="user-card">
-          <div className="avatar-placeholder">{user.username.charAt(0).toUpperCase()}</div>
+          <div className="avatar-placeholder">
+            <PersonIcon width="24" height="24" />
+          </div>
           <div className="user-info">
             <h3>{user.display_name || user.username}</h3>
             <p>@{user.username}</p>
