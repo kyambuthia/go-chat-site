@@ -96,9 +96,11 @@ function App() {
     }
   };
 
+  const isContactsView = !selectedContact && (activeTab === 'chat' || activeTab === 'contacts');
+
   return (
     <div className="App">
-      <main className={`app-content ${selectedContact ? 'no-padding' : ''}`}>
+      <main className={`app-content ${selectedContact ? 'no-padding' : ''} ${isContactsView ? 'contacts-view' : ''}`}>
         {renderContent()}
       </main>
       {isLoggedIn && !selectedContact && (
