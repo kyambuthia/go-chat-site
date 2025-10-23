@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { getContacts } from "../api";
-import { CheckIcon, PaperPlaneIcon } from '@radix-ui/react-icons';
+import { CheckIcon, PaperPlaneIcon, ArrowUpIcon } from '@radix-ui/react-icons';
 import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
+import SendMoneyForm from "./SendMoneyForm";
 
 function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnline }) {
   const [newMessage, setNewMessage] = useState("");
+  const [showSendMoneyForm, setShowSendMoneyForm] = useState(false);
 
   const handleSendMessage = () => {
     if (newMessage.trim() && selectedContact) {
@@ -33,25 +35,38 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
           <AvatarFallback>{selectedContact.username.charAt(0).toUpperCase()}</AvatarFallback>
         </Avatar>
         <h2>{selectedContact.display_name || selectedContact.username}</h2>
+        <button onClick={() => setShowSendMoneyForm(true)} className="send-money-chat-button">
+          <ArrowUpIcon />
+        </button>
       </div>
-      <div className="messages">
-        {messages.map((msg, index) => (
-          <div key={index} className={`message ${msg.sent ? 'sent' : 'received'}`}>
-            <div className="message-body">{msg.body}</div>
-            {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
-          </div>
-        ))}
-      </div>
-      <div className="input-area">
-        <input
-          type="text"
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+      {showSendMoneyForm ? (
+        <SendMoneyForm
+          defaultRecipient={selectedContact.username}
+          onSendSuccess={() => setShowSendMoneyForm(false)}
+          onCancel={() => setShowSendMoneyForm(false)}
         />
-        <button onClick={handleSendMessage} className="send-button"><PaperPlaneIcon className="send-button-icon" /></button>
-      </div>
+      ) : (
+        <>
+          <div className="messages">
+            {messages.map((msg, index) => (
+              <div key={index} className={`message ${msg.sent ? 'sent' : 'received'}`}>
+                <div className="message-body">{msg.body}</div>
+                {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
+              </div>
+            ))}
+          </div>
+          <div className="input-area">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              placeholder="Type a message..."
+              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+            />
+            <button onClick={handleSendMessage} className="send-button"><PaperPlaneIcon className="send-button-icon" /></button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
