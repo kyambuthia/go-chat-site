@@ -1,4 +1,6 @@
 import { acceptInvite, rejectInvite } from "../api";
+import { PersonIcon } from '@radix-ui/react-icons';
+import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
 
 export default function InvitesPage({ invites, onUpdate }) {
   const handleAccept = async (inviteID) => {
@@ -20,7 +22,10 @@ export default function InvitesPage({ invites, onUpdate }) {
         <ul>
           {invites.map((invite) => (
             <li key={invite.id}>
-              <div className="avatar-placeholder">{invite.inviter_username.charAt(0).toUpperCase()}</div>
+              <Avatar className="avatar-placeholder">
+                <AvatarImage src="" alt={invite.inviter_username} />
+                <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
+              </Avatar>
               <span>{invite.inviter_username}</span>
               <div className="invite-actions">
                 <button onClick={() => handleAccept(invite.id)} className="accept">Accept</button>
