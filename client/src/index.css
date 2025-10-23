@@ -305,6 +305,8 @@ button.danger:hover {
 .message.sent {
     align-self: flex-end;
     animation-name: slideInFromRight;
+    flex-direction: column;
+    align-items: flex-end;
 }
 
 .message.sent .message-body {
@@ -349,7 +351,7 @@ button.danger:hover {
 
 
 .message-status-icon {
-  margin-left: 5px;
+  margin-top: 4px;
   font-size: 0.8em;
   color: var(--accent-color);
   display: inline-flex;
@@ -645,3 +647,10 @@ button.danger:hover {
     width: 1em;
     height: 1em;
 }
+
+@media (max-width: 600px) {
+  .app-content.contacts-view {
+    padding: 0;
+  }
+}
+
