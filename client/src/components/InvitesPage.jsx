@@ -1,25 +1,14 @@
-import { useState, useEffect } from "react";
-import { getInvites, acceptInvite, rejectInvite } from "../api";
+import { acceptInvite, rejectInvite } from "../api";
 
-export default function InvitesPage() {
-  const [invites, setInvites] = useState([]);
-
-  useEffect(() => {
-    const fetchInvites = async () => {
-      const response = await getInvites();
-      setInvites(response || []);
-    };
-    fetchInvites();
-  }, []);
-
+export default function InvitesPage({ invites, onUpdate }) {
   const handleAccept = async (inviteID) => {
     await acceptInvite(inviteID);
-    setInvites(invites.filter((invite) => invite.id !== inviteID));
+    onUpdate();
   };
 
   const handleReject = async (inviteID) => {
     await rejectInvite(inviteID);
-    setInvites(invites.filter((invite) => invite.id !== inviteID));
+    onUpdate();
   };
 
   return (
