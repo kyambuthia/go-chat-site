@@ -80,3 +80,10 @@ export const rejectInvite = (inviteID) => {
 export const getMe = () => apiRequest("/api/me");
 
 export const getWallet = () => apiRequest("/api/wallet");
+
+export const sendMoney = (username, amount) => {
+  return apiRequest("/api/wallet/send", {
+    method: "POST",
+    body: JSON.stringify({ username, amount }),
+  });
+};
