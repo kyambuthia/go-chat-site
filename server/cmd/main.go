@@ -2,50 +2,61 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/api"
+	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 )
 
 func main() {
-	// Find project root
 	root, err := findProjectRoot()
 	if err != nil {
-		log.Fatal("Failed to find project root:", err)
+		log.Fatal("failed to find project root: ", err)
 	}
-	dbPath := filepath.Join(root, "chat.db")
 
-	// Open log file
-	logFile, err := os.OpenFile(filepath.Join(root, "server", "server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	logFile, err := os.OpenFile(filepath.Join(root, "server", "server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
 	if err != nil {
-		log.Fatal("Failed to open log file:", err)
+		log.Fatal("failed to open log file: ", err)
 	}
-	// Redirect log output to the file
+	defer logFile.Close()
 	log.SetOutput(logFile)
 
-	db, err := store.NewSqliteStore(dbPath)
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if err := auth.ConfigureJWT(jwtSecret); err != nil {
+		log.Fatal("invalid JWT_SECRET: ", err)
+	}
+
+	dbPath := filepath.Join(root, "chat.db")
+	dbStore, err := store.NewSqliteStore(dbPath)
 	if err != nil {
 		log.Fatal(err)
+	}
+	defer dbStore.DB.Close()
+
+	migrationsPath := filepath.Join(root, "server", "migrations")
+	if err := migrate.RunMigrations(dbStore.DB, migrationsPath); err != nil {
+		log.Fatal("migration failed: ", err)
 	}
 
 	hub := ws.NewHub()
 	go hub.Run()
+	defer hub.Shutdown()
 
-	api := api.NewAPI(db, hub)
+	handler := api.NewAPI(dbStore, hub)
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	fmt.Printf("Server listening on port %s\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, api))
+	log.Printf("server listening on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
 func findProjectRoot() (string, error) {

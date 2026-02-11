@@ -1,30 +1,38 @@
-// ISSUE: The error handling in the Register function is not descriptive.
-// It returns generic HTTP errors, masking the underlying cause (e.g., database errors),
-// which makes debugging difficult.
-
 package handlers
 
 import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type AuthHandler struct {
-	Store *store.SqliteStore
+	Store store.AuthStore
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
 	var creds struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
-		web.JSONError(w, err, http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
+		return
+	}
+
+	creds.Username = strings.TrimSpace(creds.Username)
+	if creds.Username == "" {
+		web.JSONError(w, errors.New("username is required"), http.StatusBadRequest)
 		return
 	}
 
@@ -39,8 +47,9 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":       id,
 		"username": creds.Username,
 	})

@@ -5,50 +5,55 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type ContactsHandler struct {
-	Store *store.SqliteStore
+	Store store.ContactsStore
 }
 
 func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("userID").(int)
+	if r.Method != http.MethodGet {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
 		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
 		return
 	}
 
-	rows, err := h.Store.GetContacts(userID)
+	contacts, err := h.Store.ListContacts(userID)
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	var contacts []store.User
-	for rows.Next() {
-		var contact store.User
-		if err := rows.Scan(&contact.ID, &contact.Username, &contact.DisplayName, &contact.AvatarURL); err != nil {
-			web.JSONError(w, err, http.StatusInternalServerError)
-			return
-		}
-		contacts = append(contacts, contact)
-	}
-
-	json.NewEncoder(w).Encode(contacts)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(contacts)
 }
 
 func (h *ContactsHandler) AddContact(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(int)
+	if r.Method != http.MethodPost {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
 
 	var req struct {
 		Username string `json:"username"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		web.JSONError(w, err, http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 		return
 	}
 
@@ -67,14 +72,23 @@ func (h *ContactsHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ContactsHandler) RemoveContact(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(int)
+	if r.Method != http.MethodDelete {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
 
 	var req struct {
 		ContactID int `json:"contact_id"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		web.JSONError(w, err, http.StatusBadRequest)
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
 		return
 	}
 

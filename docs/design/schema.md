@@ -1,51 +1,25 @@
-# Database Schema
+# Database Schema (Refactored)
 
-## Users
+## Core Entities
 
-The `users` table stores user account information.
+### `users`
 
-- `id`: Primary key.
-- `username`: Unique username for each user.
-- `password_hash`: Hashed password.
-- `created_at`: Timestamp of account creation.
+Stores account identity and profile data.
 
 ```sql
 CREATE TABLE users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
+  display_name TEXT,
+  avatar_url TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
-## Messages
+### `contacts`
 
-The `messages` table stores chat messages between users.
-
-- `id`: Primary key.
-- `from_user_id`: Foreign key to the `users` table, indicating the sender.
-- `to_user_id`: Foreign key to the `users` table, indicating the recipient.
-- `body`: The content of the message.
-- `created_at`: Timestamp of when the message was sent.
-
-```sql
-CREATE TABLE messages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  from_user_id INTEGER NOT NULL,
-  to_user_id INTEGER NOT NULL,
-  body TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY(from_user_id) REFERENCES users(id),
-  FOREIGN KEY(to_user_id) REFERENCES users(id)
-);
-```
-
-## Contacts
-
-The `contacts` table stores user contact relationships.
-
-- `user_id`: Foreign key to the `users` table.
-- `contact_id`: Foreign key to the `users` table, indicating the contact.
+Directional contact edges. Accepted invites create two rows for bidirectional contact.
 
 ```sql
 CREATE TABLE contacts (
@@ -54,5 +28,71 @@ CREATE TABLE contacts (
   PRIMARY KEY (user_id, contact_id),
   FOREIGN KEY(user_id) REFERENCES users(id),
   FOREIGN KEY(contact_id) REFERENCES users(id)
+);
+```
+
+## Invites
+
+### `contact_invites`
+
+Canonical invite table with one relationship per unordered user pair.
+
+```sql
+CREATE TABLE contact_invites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  requester_id INTEGER NOT NULL,
+  recipient_id INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (requester_id <> recipient_id),
+  FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+## Messaging
+
+### `messages`
+
+Stores direct message payloads.
+
+### `message_deliveries`
+
+Tracks delivery/read timestamps per message.
+
+## Wallet
+
+### `wallet_accounts`
+
+Balances in integer cents.
+
+```sql
+CREATE TABLE wallet_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL UNIQUE,
+  balance_cents INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (balance_cents >= 0),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+```
+
+### `wallet_transfers`
+
+Transfer ledger for auditability.
+
+```sql
+CREATE TABLE wallet_transfers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  sender_user_id INTEGER NOT NULL,
+  recipient_user_id INTEGER NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
+  note TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK (sender_user_id <> recipient_user_id),
+  FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 ```

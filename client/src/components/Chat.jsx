@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { getContacts } from "../api";
-import { CheckIcon, PaperPlaneIcon, ArrowUpIcon, PersonIcon } from '@radix-ui/react-icons';
-import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
+import { CheckIcon, PaperPlaneIcon, ArrowUpIcon, PersonIcon } from "@radix-ui/react-icons";
+import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import SendMoneyForm from "./SendMoneyForm";
 
 function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnline }) {
@@ -9,17 +9,20 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
   const [showSendMoneyForm, setShowSendMoneyForm] = useState(false);
 
   const handleSendMessage = () => {
-    if (newMessage.trim() && selectedContact) {
-      const message = {
-        id: Date.now(),
-        type: "direct_message",
-        to: selectedContact.username,
-        body: newMessage,
-      };
-      ws.send(JSON.stringify(message));
-      setMessages([...messages, { ...message, from: "Me", sent: true, delivered: false }]);
-      setNewMessage("");
+    if (!newMessage.trim() || !selectedContact) {
+      return;
     }
+
+    const message = {
+      id: Date.now(),
+      type: "direct_message",
+      to: selectedContact.username,
+      body: newMessage,
+    };
+
+    ws.send(JSON.stringify(message));
+    setMessages((prev) => [...prev, { ...message, from: "Me", sent: true, delivered: false }]);
+    setNewMessage("");
   };
 
   if (!selectedContact) {
@@ -30,7 +33,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
     <div className="chat-window">
       <div className="chat-header">
         <button onClick={onBack} className="back-button">←</button>
-        <Avatar className={`avatar-placeholder ${isOnline ? 'online' : ''}`}>
+        <Avatar className={`avatar-placeholder ${isOnline ? "online" : ""}`}>
           <AvatarImage src="" alt="" />
           <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
         </Avatar>
@@ -49,7 +52,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
         <>
           <div className="messages">
             {messages.map((msg, index) => (
-              <div key={index} className={`message ${msg.sent ? 'sent' : 'received'}`}>
+              <div key={index} className={`message ${msg.sent ? "sent" : "received"}`}>
                 <div className="message-body">{msg.body}</div>
                 {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
               </div>
@@ -61,7 +64,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
               value={newMessage}
               onChange={(e) => setNewMessage(e.target.value)}
               placeholder="Type a message..."
-              onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+              onKeyUp={(e) => e.key === "Enter" && handleSendMessage()}
             />
             <button onClick={handleSendMessage} className="send-button"><PaperPlaneIcon className="send-button-icon" /></button>
           </div>
@@ -71,7 +74,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
   );
 }
 
-export default function Chat({ ws, selectedContact, setSelectedContact, onlineUsers }) {
+export default function Chat({ ws, selectedContact, setSelectedContact, onlineUsers, lastWsMessage }) {
   const [messages, setMessages] = useState([]);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -95,21 +98,21 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   }, []);
 
   useEffect(() => {
-    if (ws) {
-      ws.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === "message_ack") {
-          setMessages((prevMessages) =>
-            prevMessages.map((msg) =>
-              msg.id === message.id ? { ...msg, delivered: true } : msg
-            )
-          );
-        } else {
-          setMessages((prevMessages) => [...prevMessages, message]);
-        }
-      };
+    if (!lastWsMessage) {
+      return;
     }
-  }, [ws, selectedContact]);
+
+    if (lastWsMessage.type === "message_ack") {
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => (msg.id === lastWsMessage.id ? { ...msg, delivered: true } : msg))
+      );
+      return;
+    }
+
+    if (lastWsMessage.type === "direct_message") {
+      setMessages((prevMessages) => [...prevMessages, lastWsMessage]);
+    }
+  }, [lastWsMessage]);
 
   useEffect(() => {
     setMessages([]);
@@ -145,7 +148,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             <ul>
               {contacts.map((contact) => (
                 <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-                  <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>
+                  <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? "online" : ""}`}>
                     <AvatarImage src="" alt="" />
                     <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
                   </Avatar>

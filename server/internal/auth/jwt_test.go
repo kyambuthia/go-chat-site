@@ -6,6 +6,10 @@ import (
 )
 
 func TestGenerateAndValidateToken(t *testing.T) {
+	if err := ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
 	userID := 1
 
 	token, err := GenerateToken(userID)

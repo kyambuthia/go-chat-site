@@ -1,15 +1,15 @@
 # client
 
-To install dependencies:
+## Install
 
 ```bash
 bun install
 ```
 
-To run:
+## Run
 
 ```bash
-bun run index.ts
+bun run dev
 ```
 
-This project was created using `bun init` in bun v1.2.21. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+The app expects API/WS routes proxied by Vite (`/api`, `/ws`).

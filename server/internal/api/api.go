@@ -1,8 +1,9 @@
 package api
 
 import (
-	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/handlers"
@@ -10,40 +11,35 @@ import (
 	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 )
 
-func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
+func NewAPI(dataStore store.APIStore, hub *ws.Hub) http.Handler {
 	mux := http.NewServeMux()
 
-	authHandler := &handlers.AuthHandler{Store: store}
-	contactsHandler := &handlers.ContactsHandler{Store: store}
-	inviteHandler := &handlers.InviteHandler{Store: store}
-	walletHandler := &handlers.WalletHandler{Store: store}
-	meHandler := &handlers.MeHandler{Store: store}
+	authHandler := &handlers.AuthHandler{Store: dataStore}
+	contactsHandler := &handlers.ContactsHandler{Store: dataStore}
+	inviteHandler := &handlers.InviteHandler{Store: dataStore}
+	walletHandler := &handlers.WalletHandler{Store: dataStore}
+	meHandler := &handlers.MeHandler{Store: dataStore}
 
-	// Auth
 	mux.HandleFunc("/api/register", authHandler.Register)
-	mux.HandleFunc("/api/login", auth.Login(store))
+	mux.HandleFunc("/api/login", auth.Login(dataStore))
 
-	// Contacts
 	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(contactsHandler.GetContacts)))
 
-	// Invites
 	mux.Handle("/api/invites", auth.Middleware(http.HandlerFunc(inviteHandler.GetInvites)))
 	mux.Handle("/api/invites/send", auth.Middleware(http.HandlerFunc(inviteHandler.SendInvite)))
 	mux.Handle("/api/invites/accept", auth.Middleware(http.HandlerFunc(inviteHandler.AcceptInvite)))
 	mux.Handle("/api/invites/reject", auth.Middleware(http.HandlerFunc(inviteHandler.RejectInvite)))
 
-	// Wallet
 	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(meHandler.GetMe)))
 	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
 
-	// Websocket
 	authenticator := func(token string) (int, string, error) {
 		claims, err := auth.ValidateToken(token)
 		if err != nil {
 			return 0, "", err
 		}
-		user, err := store.GetUserByID(claims.UserID)
+		user, err := dataStore.GetUserByID(claims.UserID)
 		if err != nil {
 			return 0, "", err
 		}
@@ -51,7 +47,7 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	}
 
 	resolve := func(username string) (int, error) {
-		user, err := store.GetUserByUsername(username)
+		user, err := dataStore.GetUserByUsername(username)
 		if err != nil {
 			return 0, err
 		}
@@ -63,9 +59,21 @@ func NewAPI(store *store.SqliteStore, hub *ws.Hub) http.Handler {
 	return loggingMiddleware(mux)
 }
 
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Request received")
-		next.ServeHTTP(w, r)
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		log.Printf("method=%s path=%s status=%d duration_ms=%d", r.Method, r.URL.Path, rec.status, time.Since(start).Milliseconds())
 	})
 }

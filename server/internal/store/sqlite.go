@@ -3,9 +3,18 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"math"
+	"strings"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/crypto"
 	_ "github.com/mattn/go-sqlite3"
+)
+
+var (
+	ErrNotFound         = errors.New("not found")
+	ErrInviteExists     = errors.New("an invite already exists between these users")
+	ErrInsufficientFund = errors.New("insufficient funds")
 )
 
 type SqliteStore struct {
@@ -20,9 +29,39 @@ type User struct {
 	PasswordHash string `json:"-"`
 }
 
+type Invite struct {
+	ID              int    `json:"id"`
+	InviterUsername string `json:"inviter_username"`
+}
+
+type Wallet struct {
+	ID           int   `json:"id"`
+	UserID       int   `json:"user_id"`
+	BalanceCents int64 `json:"balance_cents"`
+}
+
+func (w Wallet) BalanceFloat() float64 {
+	return float64(w.BalanceCents) / 100.0
+}
+
+func DollarsToCents(amount float64) (int64, error) {
+	if amount <= 0 {
+		return 0, errors.New("amount must be greater than zero")
+	}
+	cents := int64(math.Round(amount * 100.0))
+	if cents <= 0 {
+		return 0, errors.New("amount is too small")
+	}
+	return cents, nil
+}
+
 func NewSqliteStore(dataSourceName string) (*SqliteStore, error) {
 	db, err := sql.Open("sqlite3", dataSourceName)
 	if err != nil {
+		return nil, err
+	}
+
+	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
 		return nil, err
 	}
 
@@ -34,6 +73,11 @@ func NewSqliteStore(dataSourceName string) (*SqliteStore, error) {
 }
 
 func (s *SqliteStore) CreateUser(username, password string) (int, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return 0, errors.New("username is required")
+	}
+
 	hashedPassword, err := crypto.HashPassword(password)
 	if err != nil {
 		return 0, err
@@ -53,39 +97,71 @@ func (s *SqliteStore) CreateUser(username, password string) (int, error) {
 }
 
 func (s *SqliteStore) GetUserByUsername(username string) (*User, error) {
-	row := s.DB.QueryRow(`SELECT id, username, password_hash FROM users WHERE username = ?`, username)
+	row := s.DB.QueryRow(`
+		SELECT id, username, COALESCE(display_name, ''), COALESCE(avatar_url, ''), password_hash
+		FROM users
+		WHERE username = ?
+	`, strings.TrimSpace(username))
+
 	user := &User{}
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash)
-	if err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &user.DisplayName, &user.AvatarURL, &user.PasswordHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return user, nil
 }
 
 func (s *SqliteStore) GetUserByID(id int) (*User, error) {
-	row := s.DB.QueryRow(`SELECT id, username, password_hash FROM users WHERE id = ?`, id)
+	row := s.DB.QueryRow(`
+		SELECT id, username, COALESCE(display_name, ''), COALESCE(avatar_url, ''), password_hash
+		FROM users
+		WHERE id = ?
+	`, id)
+
 	user := &User{}
-	err := row.Scan(&user.ID, &user.Username, &user.PasswordHash)
-	if err != nil {
+	if err := row.Scan(&user.ID, &user.Username, &user.DisplayName, &user.AvatarURL, &user.PasswordHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
 		return nil, err
 	}
 	return user, nil
 }
 
-func (s *SqliteStore) GetContacts(userID int) (*sql.Rows, error) {
+func (s *SqliteStore) ListContacts(userID int) ([]User, error) {
 	rows, err := s.DB.Query(`
 		SELECT u.id, u.username, COALESCE(u.display_name, ''), COALESCE(u.avatar_url, '')
 		FROM users u
 		INNER JOIN contacts c ON u.id = c.contact_id
 		WHERE c.user_id = ?
+		ORDER BY COALESCE(u.display_name, u.username), u.username
 	`, userID)
 	if err != nil {
 		return nil, err
 	}
-	return rows, nil
+	defer rows.Close()
+
+	contacts := make([]User, 0)
+	for rows.Next() {
+		var contact User
+		if err := rows.Scan(&contact.ID, &contact.Username, &contact.DisplayName, &contact.AvatarURL); err != nil {
+			return nil, err
+		}
+		contacts = append(contacts, contact)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return contacts, nil
 }
 
 func (s *SqliteStore) AddContact(userID, contactID int) error {
+	if userID == contactID {
+		return errors.New("you cannot add yourself as a contact")
+	}
 	_, err := s.DB.Exec(`INSERT OR IGNORE INTO contacts (user_id, contact_id) VALUES (?, ?)`, userID, contactID)
 	return err
 }
@@ -96,57 +172,90 @@ func (s *SqliteStore) RemoveContact(userID, contactID int) error {
 }
 
 func (s *SqliteStore) CreateInvite(inviterID, inviteeID int) error {
-	var placeholder int
-	err := s.DB.QueryRow(`SELECT 1 FROM invites WHERE (inviter_id = ? AND invitee_id = ?) OR (inviter_id = ? AND invitee_id = ?)`, inviterID, inviteeID, inviteeID, inviterID).Scan(&placeholder)
-
-	if err == nil {
-		return errors.New("an invite already exists between these users")
+	if inviterID == inviteeID {
+		return errors.New("you cannot invite yourself")
 	}
-	if err != sql.ErrNoRows {
+
+	_, err := s.DB.Exec(`
+		INSERT INTO contact_invites (requester_id, recipient_id, status)
+		VALUES (?, ?, 'pending')
+	`, inviterID, inviteeID)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "unique") {
+			return ErrInviteExists
+		}
 		return err
 	}
-
-	// Correctly handle the error from Exec by declaring a new variable or using a different one.
-	_, execErr := s.DB.Exec(`INSERT INTO invites (inviter_id, invitee_id) VALUES (?, ?)`, inviterID, inviteeID)
-	return execErr
+	return nil
 }
 
-func (s *SqliteStore) GetInvites(userID int) (*sql.Rows, error) {
+func (s *SqliteStore) ListInvites(userID int) ([]Invite, error) {
 	rows, err := s.DB.Query(`
-		SELECT i.id, u.username
-		FROM invites i
-		INNER JOIN users u ON i.inviter_id = u.id
-		WHERE i.invitee_id = ? AND i.status = 'pending'
+		SELECT ci.id, u.username
+		FROM contact_invites ci
+		INNER JOIN users u ON ci.requester_id = u.id
+		WHERE ci.recipient_id = ? AND ci.status = 'pending'
+		ORDER BY ci.created_at DESC
 	`, userID)
 	if err != nil {
 		return nil, err
 	}
-	return rows, nil
+	defer rows.Close()
+
+	invites := make([]Invite, 0)
+	for rows.Next() {
+		var invite Invite
+		if err := rows.Scan(&invite.ID, &invite.InviterUsername); err != nil {
+			return nil, err
+		}
+		invites = append(invites, invite)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return invites, nil
 }
 
 func (s *SqliteStore) UpdateInviteStatus(inviteID, userID int, status string) error {
+	if status != "accepted" && status != "rejected" {
+		return fmt.Errorf("unsupported status: %s", status)
+	}
+
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	var inviterID int
-	row := tx.QueryRow(`SELECT inviter_id FROM invites WHERE id = ? AND invitee_id = ?`, inviteID, userID)
+	row := tx.QueryRow(`
+		SELECT requester_id
+		FROM contact_invites
+		WHERE id = ? AND recipient_id = ? AND status = 'pending'
+	`, inviteID, userID)
+
 	if err := row.Scan(&inviterID); err != nil {
-		tx.Rollback()
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
 		return err
 	}
 
-	_, err = tx.Exec(`UPDATE invites SET status = ? WHERE id = ?`, status, inviteID)
+	_, err = tx.Exec(`
+		UPDATE contact_invites
+		SET status = ?, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?
+	`, status, inviteID)
 	if err != nil {
-		tx.Rollback()
 		return err
 	}
 
 	if status == "accepted" {
-		_, err = tx.Exec(`INSERT INTO contacts (user_id, contact_id) VALUES (?, ?), (?, ?)`, userID, inviterID, inviterID, userID)
+		_, err = tx.Exec(`
+			INSERT OR IGNORE INTO contacts (user_id, contact_id)
+			VALUES (?, ?), (?, ?)
+		`, userID, inviterID, inviterID, userID)
 		if err != nil {
-			tx.Rollback()
 			return err
 		}
 	}
@@ -154,24 +263,21 @@ func (s *SqliteStore) UpdateInviteStatus(inviteID, userID int, status string) er
 	return tx.Commit()
 }
 
-type Wallet struct {
-	ID      int     `json:"id"`
-	UserID  int     `json:"user_id"`
-	Balance float64 `json:"balance"`
-}
-
 func (s *SqliteStore) GetWallet(userID int) (*Wallet, error) {
-	row := s.DB.QueryRow(`SELECT id, user_id, balance FROM wallets WHERE user_id = ?`, userID)
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO wallet_accounts (user_id) VALUES (?)`, userID); err != nil {
+		return nil, err
+	}
+
+	row := s.DB.QueryRow(`
+		SELECT id, user_id, balance_cents
+		FROM wallet_accounts
+		WHERE user_id = ?
+	`, userID)
 
 	var wallet Wallet
-	if err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.Balance); err != nil {
-		if err == sql.ErrNoRows {
-			// Create a new wallet if one doesn't exist
-			_, err := s.DB.Exec(`INSERT INTO wallets (user_id) VALUES (?)`, userID)
-			if err != nil {
-				return nil, err
-			}
-			return s.GetWallet(userID)
+	if err := row.Scan(&wallet.ID, &wallet.UserID, &wallet.BalanceCents); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
 		}
 		return nil, err
 	}
@@ -179,43 +285,55 @@ func (s *SqliteStore) GetWallet(userID int) (*Wallet, error) {
 	return &wallet, nil
 }
 
-func (s *SqliteStore) SendMoney(senderID, recipientID int, amount float64) error {
+func (s *SqliteStore) SendMoney(senderID, recipientID int, amountCents int64) error {
+	if senderID == recipientID {
+		return errors.New("cannot transfer to yourself")
+	}
+	if amountCents <= 0 {
+		return errors.New("amount must be greater than zero")
+	}
+
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
-	// Get sender's balance
-	var senderBalance float64
-	row := tx.QueryRow(`SELECT balance FROM wallets WHERE user_id = ?`, senderID)
-	if err := row.Scan(&senderBalance); err != nil {
-		tx.Rollback()
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO wallet_accounts (user_id) VALUES (?)`, senderID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO wallet_accounts (user_id) VALUES (?)`, recipientID); err != nil {
 		return err
 	}
 
-	if senderBalance < amount {
-		tx.Rollback()
-		return errors.New("insufficient funds")
+	var senderBalance int64
+	if err := tx.QueryRow(`SELECT balance_cents FROM wallet_accounts WHERE user_id = ?`, senderID).Scan(&senderBalance); err != nil {
+		return err
+	}
+	if senderBalance < amountCents {
+		return ErrInsufficientFund
 	}
 
-	// Get recipient's balance
-	var recipientBalance float64
-	row = tx.QueryRow(`SELECT balance FROM wallets WHERE user_id = ?`, recipientID)
-	if err := row.Scan(&recipientBalance); err != nil {
-		tx.Rollback()
+	if _, err := tx.Exec(`
+		UPDATE wallet_accounts
+		SET balance_cents = balance_cents - ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ?
+	`, amountCents, senderID); err != nil {
 		return err
 	}
 
-	// Update balances
-	_, err = tx.Exec(`UPDATE wallets SET balance = ? WHERE user_id = ?`, senderBalance-amount, senderID)
-	if err != nil {
-		tx.Rollback()
+	if _, err := tx.Exec(`
+		UPDATE wallet_accounts
+		SET balance_cents = balance_cents + ?, updated_at = CURRENT_TIMESTAMP
+		WHERE user_id = ?
+	`, amountCents, recipientID); err != nil {
 		return err
 	}
 
-	_, err = tx.Exec(`UPDATE wallets SET balance = ? WHERE user_id = ?`, recipientBalance+amount, recipientID)
-	if err != nil {
-		tx.Rollback()
+	if _, err := tx.Exec(`
+		INSERT INTO wallet_transfers (sender_user_id, recipient_user_id, amount_cents)
+		VALUES (?, ?, ?)
+	`, senderID, recipientID, amountCents); err != nil {
 		return err
 	}
 

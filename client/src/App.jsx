@@ -6,7 +6,7 @@ import ContactsPage from "./components/ContactsPage";
 import InvitesPage from "./components/InvitesPage";
 import AccountPage from "./components/AccountPage";
 import { setToken, getInvites } from "./api";
-import { ChatBubbleIcon, PersonIcon, EnvelopeClosedIcon, GearIcon } from '@radix-ui/react-icons';
+import { ChatBubbleIcon, PersonIcon, EnvelopeClosedIcon, GearIcon } from "@radix-ui/react-icons";
 
 import { connectWebSocket } from "./ws";
 
@@ -18,6 +18,7 @@ function App() {
   const [activeTab, setActiveTab] = useState("chat");
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [invites, setInvites] = useState([]);
+  const [lastWsMessage, setLastWsMessage] = useState(null);
 
   const fetchInvites = async () => {
     try {
@@ -29,30 +30,36 @@ function App() {
   };
 
   useEffect(() => {
-    if (isLoggedIn) {
-      const token = localStorage.getItem("token");
-      const socket = connectWebSocket(token);
-      setWs(socket);
-
-      socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type === "user_online") {
-          setOnlineUsers((prevOnlineUsers) => [...prevOnlineUsers, message.from]);
-        } else if (message.type === "user_offline") {
-          setOnlineUsers((prevOnlineUsers) =>
-            prevOnlineUsers.filter((user) => user !== message.from)
-          );
-        }
-      };
-
-      fetchInvites();
-      const intervalId = setInterval(fetchInvites, 5000);
-
-      return () => {
-        socket.close();
-        clearInterval(intervalId);
-      };
+    if (!isLoggedIn) {
+      return;
     }
+
+    const token = localStorage.getItem("token");
+    const socket = connectWebSocket(token);
+    setWs(socket);
+
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === "user_online") {
+        setOnlineUsers((prevOnlineUsers) =>
+          prevOnlineUsers.includes(message.from) ? prevOnlineUsers : [...prevOnlineUsers, message.from]
+        );
+        return;
+      }
+      if (message.type === "user_offline") {
+        setOnlineUsers((prevOnlineUsers) => prevOnlineUsers.filter((user) => user !== message.from));
+        return;
+      }
+      setLastWsMessage(message);
+    };
+
+    fetchInvites();
+    const intervalId = setInterval(fetchInvites, 5000);
+
+    return () => {
+      socket.close();
+      clearInterval(intervalId);
+    };
   }, [isLoggedIn]);
 
   const handleLogin = (token) => {
@@ -67,6 +74,8 @@ function App() {
     setToken(null);
     setIsLoggedIn(false);
     setWs(null);
+    setOnlineUsers([]);
+    setLastWsMessage(null);
   };
 
   const renderContent = () => {
@@ -84,7 +93,15 @@ function App() {
 
     switch (activeTab) {
       case "chat":
-        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
+        return (
+          <Chat
+            ws={ws}
+            selectedContact={selectedContact}
+            setSelectedContact={setSelectedContact}
+            onlineUsers={onlineUsers}
+            lastWsMessage={lastWsMessage}
+          />
+        );
       case "contacts":
         return <ContactsPage setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
       case "invites":
@@ -92,15 +109,23 @@ function App() {
       case "account":
         return <AccountPage handleLogout={handleLogout} />;
       default:
-        return <Chat ws={ws} selectedContact={selectedContact} setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
+        return (
+          <Chat
+            ws={ws}
+            selectedContact={selectedContact}
+            setSelectedContact={setSelectedContact}
+            onlineUsers={onlineUsers}
+            lastWsMessage={lastWsMessage}
+          />
+        );
     }
   };
 
-  const isContactsView = !selectedContact && (activeTab === 'chat' || activeTab === 'contacts');
+  const isContactsView = !selectedContact && (activeTab === "chat" || activeTab === "contacts");
 
   return (
     <div className="App">
-      <main className={`app-content ${selectedContact ? 'no-padding' : ''} ${isContactsView ? 'contacts-view' : ''}`}>
+      <main className={`app-content ${selectedContact ? "no-padding" : ""} ${isContactsView ? "contacts-view" : ""}`}>
         {renderContent()}
       </main>
       {isLoggedIn && !selectedContact && (

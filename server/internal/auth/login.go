@@ -3,16 +3,21 @@ package auth
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
+	"strings"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/crypto"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
-func Login(store *store.SqliteStore) http.HandlerFunc {
+func Login(authStore store.LoginStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+			return
+		}
+
 		var creds struct {
 			Username string `json:"username"`
 			Password string `json:"password"`
@@ -23,16 +28,13 @@ func Login(store *store.SqliteStore) http.HandlerFunc {
 			return
 		}
 
-		user, err := store.GetUserByUsername(creds.Username)
+		user, err := authStore.GetUserByUsername(strings.TrimSpace(creds.Username))
 		if err != nil {
 			web.JSONError(w, errors.New("invalid username or password"), http.StatusUnauthorized)
 			return
 		}
 
-		log.Printf("Attempting login for user '%s'. Hash from DB: '%s'", user.Username, user.PasswordHash)
-
 		if !crypto.CheckPasswordHash(creds.Password, user.PasswordHash) {
-			log.Printf("Password check failed for user '%s'", user.Username)
 			web.JSONError(w, errors.New("invalid username or password"), http.StatusUnauthorized)
 			return
 		}
@@ -44,7 +46,7 @@ func Login(store *store.SqliteStore) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(struct {
+		_ = json.NewEncoder(w).Encode(struct {
 			Token string `json:"token"`
 		}{
 			Token: token,

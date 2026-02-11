@@ -1,9 +1,13 @@
 export function connectWebSocket(token) {
-	const ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const wsUrl = `${protocol}://${window.location.host}/ws`;
+  const subprotocols = token ? [`bearer.${token}`] : undefined;
 
-	ws.onopen = () => {
-		console.log("WebSocket connected");
-	};
+  const ws = new WebSocket(wsUrl, subprotocols);
 
-	return ws;
+  ws.onopen = () => {
+    console.log("WebSocket connected");
+  };
+
+  return ws;
 }

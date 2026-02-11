@@ -7,12 +7,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/ws"
-	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 )
 
 func TestAuthHandlers(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
 	s, err := store.NewSqliteStore(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -40,15 +45,13 @@ func TestAuthHandlers(t *testing.T) {
 		a.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusCreated {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				rr.Code, http.StatusCreated)
+			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusCreated)
 		}
 
 		var resp map[string]interface{}
-		json.Unmarshal(rr.Body.Bytes(), &resp)
+		_ = json.Unmarshal(rr.Body.Bytes(), &resp)
 		if resp["username"] != "testuser" {
-			t.Errorf("handler returned unexpected body: got %v want %v",
-				resp["username"], "testuser")
+			t.Errorf("handler returned unexpected body: got %v want %v", resp["username"], "testuser")
 		}
 	})
 
@@ -63,8 +66,7 @@ func TestAuthHandlers(t *testing.T) {
 		a.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusConflict {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				rr.Code, http.StatusConflict)
+			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusConflict)
 		}
 	})
 
@@ -79,8 +81,7 @@ func TestAuthHandlers(t *testing.T) {
 		a.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusBadRequest {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				rr.Code, http.StatusBadRequest)
+			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusBadRequest)
 		}
 	})
 
@@ -95,12 +96,11 @@ func TestAuthHandlers(t *testing.T) {
 		a.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusOK {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				rr.Code, http.StatusOK)
+			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusOK)
 		}
 
 		var resp map[string]string
-		json.Unmarshal(rr.Body.Bytes(), &resp)
+		_ = json.Unmarshal(rr.Body.Bytes(), &resp)
 		if resp["token"] == "" {
 			t.Error("handler returned no token")
 		}
@@ -117,8 +117,7 @@ func TestAuthHandlers(t *testing.T) {
 		a.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				rr.Code, http.StatusUnauthorized)
+			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusUnauthorized)
 		}
 	})
 
@@ -133,8 +132,7 @@ func TestAuthHandlers(t *testing.T) {
 		a.ServeHTTP(rr, req)
 
 		if rr.Code != http.StatusUnauthorized {
-			t.Errorf("handler returned wrong status code: got %v want %v",
-				rr.Code, http.StatusUnauthorized)
+			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusUnauthorized)
 		}
 	})
 }

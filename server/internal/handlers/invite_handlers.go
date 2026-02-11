@@ -5,15 +5,21 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type InviteHandler struct {
-	Store *store.SqliteStore
+	Store store.InviteStore
 }
 
 func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req struct {
 		Username string `json:"username"`
 	}
@@ -23,7 +29,11 @@ func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inviterID := r.Context().Value("userID").(int)
+	inviterID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
 
 	user, err := h.Store.GetUserByUsername(req.Username)
 	if err != nil {
@@ -31,12 +41,11 @@ func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if inviterID == user.ID {
-		web.JSONError(w, errors.New("you cannot invite yourself"), http.StatusBadRequest)
-		return
-	}
-
 	if err := h.Store.CreateInvite(inviterID, user.ID); err != nil {
+		if errors.Is(err, store.ErrInviteExists) {
+			web.JSONError(w, err, http.StatusConflict)
+			return
+		}
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -45,55 +54,41 @@ func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *InviteHandler) GetInvites(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("userID").(int)
+	if r.Method != http.MethodGet {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
 
-	rows, err := h.Store.GetInvites(userID)
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
+	invites, err := h.Store.ListInvites(userID)
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	var invites []struct {
-		ID               int    `json:"id"`
-		InviterUsername string `json:"inviter_username"`
-	}
-
-	for rows.Next() {
-		var invite struct {
-			ID               int    `json:"id"`
-			InviterUsername string `json:"inviter_username"`
-		}
-		if err := rows.Scan(&invite.ID, &invite.InviterUsername); err != nil {
-			web.JSONError(w, err, http.StatusInternalServerError)
-			return
-		}
-		invites = append(invites, invite)
-	}
-
-	json.NewEncoder(w).Encode(invites)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(invites)
 }
 
 func (h *InviteHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		InviteID int `json:"invite_id"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
-		return
-	}
-
-	userID := r.Context().Value("userID").(int)
-
-	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, "accepted"); err != nil {
-		web.JSONError(w, err, http.StatusInternalServerError)
-		return	}
-
-	w.WriteHeader(http.StatusOK)
+	h.updateInviteStatus(w, r, "accepted")
 }
 
 func (h *InviteHandler) RejectInvite(w http.ResponseWriter, r *http.Request) {
+	h.updateInviteStatus(w, r, "rejected")
+}
+
+func (h *InviteHandler) updateInviteStatus(w http.ResponseWriter, r *http.Request, status string) {
+	if r.Method != http.MethodPost {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req struct {
 		InviteID int `json:"invite_id"`
 	}
@@ -103,9 +98,17 @@ func (h *InviteHandler) RejectInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("userID").(int)
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
 
-	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, "rejected"); err != nil {
+	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, status); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			web.JSONError(w, errors.New("invite not found"), http.StatusNotFound)
+			return
+		}
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
