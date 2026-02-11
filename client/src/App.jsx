@@ -19,6 +19,15 @@ function App() {
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [invites, setInvites] = useState([]);
   const [lastWsMessage, setLastWsMessage] = useState(null);
+  const [wsStatus, setWsStatus] = useState("offline");
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      setToken(token);
+      setIsLoggedIn(true);
+    }
+  }, []);
 
   const fetchInvites = async () => {
     try {
@@ -34,9 +43,22 @@ function App() {
       return;
     }
 
+    setWsStatus("connecting");
     const token = localStorage.getItem("token");
     const socket = connectWebSocket(token);
     setWs(socket);
+
+    socket.onopen = () => {
+      setWsStatus("online");
+    };
+
+    socket.onclose = () => {
+      setWsStatus("offline");
+    };
+
+    socket.onerror = () => {
+      setWsStatus("offline");
+    };
 
     socket.onmessage = (event) => {
       const message = JSON.parse(event.data);
@@ -54,7 +76,7 @@ function App() {
     };
 
     fetchInvites();
-    const intervalId = setInterval(fetchInvites, 5000);
+    const intervalId = setInterval(fetchInvites, 7000);
 
     return () => {
       socket.close();
@@ -76,6 +98,9 @@ function App() {
     setWs(null);
     setOnlineUsers([]);
     setLastWsMessage(null);
+    setSelectedContact(null);
+    setInvites([]);
+    setWsStatus("offline");
   };
 
   const renderContent = () => {
@@ -88,7 +113,7 @@ function App() {
     }
 
     if (!ws) {
-      return <div>Connecting...</div>;
+      return <div className="status-block">Connecting...</div>;
     }
 
     switch (activeTab) {
@@ -126,6 +151,12 @@ function App() {
   return (
     <div className="App">
       <main className={`app-content ${selectedContact ? "no-padding" : ""} ${isContactsView ? "contacts-view" : ""}`}>
+        {isLoggedIn && !selectedContact && (
+          <div className={`connection-pill ${wsStatus}`}>
+            <span className="connection-dot" />
+            {wsStatus === "online" ? "Connected" : wsStatus === "connecting" ? "Connecting" : "Offline"}
+          </div>
+        )}
         {renderContent()}
       </main>
       {isLoggedIn && !selectedContact && (

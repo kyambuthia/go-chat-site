@@ -1,15 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getContacts } from "../api";
-import { CheckIcon, PaperPlaneIcon, ArrowUpIcon, PersonIcon } from "@radix-ui/react-icons";
+import { CheckIcon, PaperPlaneIcon, ArrowUpIcon, PersonIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import SendMoneyForm from "./SendMoneyForm";
 
-function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnline }) {
+function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOnline }) {
   const [newMessage, setNewMessage] = useState("");
   const [showSendMoneyForm, setShowSendMoneyForm] = useState(false);
 
   const handleSendMessage = () => {
-    if (!newMessage.trim() || !selectedContact) {
+    const trimmed = newMessage.trim();
+    if (!trimmed || !selectedContact) {
       return;
     }
 
@@ -17,11 +18,11 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
       id: Date.now(),
       type: "direct_message",
       to: selectedContact.username,
-      body: newMessage,
+      body: trimmed,
     };
 
     ws.send(JSON.stringify(message));
-    setMessages((prev) => [...prev, { ...message, from: "Me", sent: true, delivered: false }]);
+    onSendMessage(message);
     setNewMessage("");
   };
 
@@ -51,6 +52,7 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
       ) : (
         <>
           <div className="messages">
+            {messages.length === 0 && <p className="thread-empty">No messages yet. Start the conversation.</p>}
             {messages.map((msg, index) => (
               <div key={index} className={`message ${msg.sent ? "sent" : "received"}`}>
                 <div className="message-body">{msg.body}</div>
@@ -75,10 +77,15 @@ function ChatWindow({ ws, selectedContact, messages, setMessages, onBack, isOnli
 }
 
 export default function Chat({ ws, selectedContact, setSelectedContact, onlineUsers, lastWsMessage }) {
-  const [messages, setMessages] = useState([]);
+  const [threads, setThreads] = useState({});
+  const [unreadByUser, setUnreadByUser] = useState({});
   const [contacts, setContacts] = useState([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const selectedUsername = selectedContact?.username;
+  const messages = selectedUsername ? (threads[selectedUsername] || []) : [];
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -103,20 +110,79 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     }
 
     if (lastWsMessage.type === "message_ack") {
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) => (msg.id === lastWsMessage.id ? { ...msg, delivered: true } : msg))
-      );
+      setThreads((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((username) => {
+          next[username] = next[username].map((msg) =>
+            msg.id === lastWsMessage.id ? { ...msg, delivered: true } : msg
+          );
+        });
+        return next;
+      });
       return;
     }
 
-    if (lastWsMessage.type === "direct_message") {
-      setMessages((prevMessages) => [...prevMessages, lastWsMessage]);
+    if (lastWsMessage.type === "direct_message" && lastWsMessage.from) {
+      setThreads((prev) => ({
+        ...prev,
+        [lastWsMessage.from]: [...(prev[lastWsMessage.from] || []), lastWsMessage],
+      }));
+
+      if (selectedUsername !== lastWsMessage.from) {
+        setUnreadByUser((prev) => ({
+          ...prev,
+          [lastWsMessage.from]: (prev[lastWsMessage.from] || 0) + 1,
+        }));
+      }
     }
-  }, [lastWsMessage]);
+  }, [lastWsMessage, selectedUsername]);
 
   useEffect(() => {
-    setMessages([]);
-  }, [selectedContact]);
+    if (!selectedUsername) {
+      return;
+    }
+    setUnreadByUser((prev) => ({ ...prev, [selectedUsername]: 0 }));
+  }, [selectedUsername]);
+
+  const filteredContacts = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const base = contacts.filter((contact) => {
+      if (!needle) {
+        return true;
+      }
+      const display = (contact.display_name || "").toLowerCase();
+      return contact.username.toLowerCase().includes(needle) || display.includes(needle);
+    });
+
+    return base.sort((a, b) => {
+      const aUnread = unreadByUser[a.username] || 0;
+      const bUnread = unreadByUser[b.username] || 0;
+      if (aUnread !== bUnread) {
+        return bUnread - aUnread;
+      }
+      const aOnline = onlineUsers.includes(a.username) ? 1 : 0;
+      const bOnline = onlineUsers.includes(b.username) ? 1 : 0;
+      if (aOnline !== bOnline) {
+        return bOnline - aOnline;
+      }
+      return a.username.localeCompare(b.username);
+    });
+  }, [contacts, onlineUsers, query, unreadByUser]);
+
+  const handleSelectContact = (contact) => {
+    setSelectedContact(contact);
+  };
+
+  const handleSendMessage = (message) => {
+    if (!selectedUsername) {
+      return;
+    }
+
+    setThreads((prev) => ({
+      ...prev,
+      [selectedUsername]: [...(prev[selectedUsername] || []), { ...message, from: "Me", sent: true, delivered: false }],
+    }));
+  };
 
   if (loading) {
     return (
@@ -144,17 +210,35 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           <p className="empty-chat-message">Invite a friend from the Contacts tab to start chatting.</p>
         ) : (
           <div className="contacts-list">
-            <h3>Your Contacts</h3>
+            <div className="contacts-toolbar">
+              <div className="search-wrap">
+                <MagnifyingGlassIcon />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search contacts"
+                  aria-label="Search contacts"
+                />
+              </div>
+            </div>
             <ul>
-              {contacts.map((contact) => (
-                <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-                  <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? "online" : ""}`}>
-                    <AvatarImage src="" alt="" />
-                    <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
-                  </Avatar>
-                  <span>{contact.display_name || contact.username}</span>
-                </li>
-              ))}
+              {filteredContacts.map((contact) => {
+                const unread = unreadByUser[contact.username] || 0;
+                return (
+                  <li key={contact.id} onClick={() => handleSelectContact(contact)}>
+                    <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? "online" : ""}`}>
+                      <AvatarImage src="" alt="" />
+                      <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
+                    </Avatar>
+                    <div className="contact-meta">
+                      <span>{contact.display_name || contact.username}</span>
+                      <small>{onlineUsers.includes(contact.username) ? "Online" : "Offline"}</small>
+                    </div>
+                    {unread > 0 && <span className="unread-pill">{unread}</span>}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}
@@ -167,7 +251,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       ws={ws}
       selectedContact={selectedContact}
       messages={messages}
-      setMessages={setMessages}
+      onSendMessage={handleSendMessage}
       onBack={() => setSelectedContact(null)}
       isOnline={onlineUsers.includes(selectedContact.username)}
     />

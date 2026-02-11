@@ -1,11 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { getContacts } from "../api";
 import Invite from "./Invite";
-import { Avatar, AvatarFallback, AvatarImage } from '@radix-ui/react-avatar';
-import { PersonIcon } from '@radix-ui/react-icons';
+import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
+import { PersonIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
 
 export default function Contacts({ setSelectedContact, onlineUsers }) {
   const [contacts, setContacts] = useState([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -26,6 +27,17 @@ export default function Contacts({ setSelectedContact, onlineUsers }) {
     fetchContacts();
   }, []);
 
+  const filteredContacts = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) {
+      return contacts;
+    }
+    return contacts.filter((contact) => {
+      const display = (contact.display_name || "").toLowerCase();
+      return contact.username.toLowerCase().includes(needle) || display.includes(needle);
+    });
+  }, [contacts, query]);
+
   if (loading) {
     return <div className="contacts-list">Loading contacts...</div>;
   }
@@ -44,17 +56,38 @@ export default function Contacts({ setSelectedContact, onlineUsers }) {
           <Invite />
         </div>
       ) : (
-        <ul>
-          {contacts.map((contact) => (
-            <li key={contact.id} onClick={() => setSelectedContact(contact)}>
-              <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? 'online' : ''}`}>
-                <AvatarImage src="" alt="" />
-                <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
-              </Avatar>
-              <span>{contact.display_name || contact.username}</span>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="contacts-toolbar">
+            <div className="search-wrap">
+              <MagnifyingGlassIcon />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search contacts"
+                aria-label="Search contacts"
+              />
+            </div>
+          </div>
+          {filteredContacts.length === 0 ? (
+            <p className="empty-chat-message">No contacts match your search.</p>
+          ) : (
+            <ul>
+              {filteredContacts.map((contact) => (
+                <li key={contact.id} onClick={() => setSelectedContact(contact)}>
+                  <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? "online" : ""}`}>
+                    <AvatarImage src="" alt="" />
+                    <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
+                  </Avatar>
+                  <div className="contact-meta">
+                    <span>{contact.display_name || contact.username}</span>
+                    <small>{onlineUsers.includes(contact.username) ? "Online" : "Offline"}</small>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
