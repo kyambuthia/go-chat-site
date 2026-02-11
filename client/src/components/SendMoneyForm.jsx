@@ -1,34 +1,46 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { sendMoney } from "../api";
+
+const QUICK_AMOUNTS = [5, 10, 20, 50];
 
 export default function SendMoneyForm({ onSendSuccess, onCancel, defaultRecipient }) {
   const [recipientUsername, setRecipientUsername] = useState(defaultRecipient || "");
   const [amount, setAmount] = useState("");
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState({ type: "", message: "" });
   const [loading, setLoading] = useState(false);
+
+  const parsedAmount = useMemo(() => parseFloat(amount), [amount]);
+
+  const setError = (message) => setStatus({ type: "error", message });
+  const setSuccess = (message) => setStatus({ type: "success", message });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setMessage("");
+    setStatus({ type: "", message: "" });
+
+    if (!recipientUsername.trim()) {
+      setError("Recipient username is required.");
+      return;
+    }
+
+    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+      setError("Enter a valid positive amount.");
+      return;
+    }
+
     setLoading(true);
-
     try {
-      const parsedAmount = parseFloat(amount);
-      if (isNaN(parsedAmount) || parsedAmount <= 0) {
-        setMessage("Please enter a valid positive amount.");
-        setLoading(false);
-        return;
-      }
-
-      await sendMoney(recipientUsername, parsedAmount);
-      setMessage("Money sent successfully!");
-      setRecipientUsername("");
+      await sendMoney(recipientUsername.trim(), parsedAmount);
+      setSuccess(`Sent $${parsedAmount.toFixed(2)} to ${recipientUsername.trim()}.`);
       setAmount("");
+      if (!defaultRecipient) {
+        setRecipientUsername("");
+      }
       if (onSendSuccess) {
         onSendSuccess();
       }
     } catch (error) {
-      setMessage(`Error: ${error.message}`);
+      setError(error.message || "Failed to send money.");
     } finally {
       setLoading(false);
     }
@@ -36,41 +48,63 @@ export default function SendMoneyForm({ onSendSuccess, onCancel, defaultRecipien
 
   return (
     <div className="send-money-form">
-      <h3>Send Money</h3>
+      <div className="send-money-header">
+        <h3>Send Money</h3>
+        <p>Quick transfer to your contact.</p>
+      </div>
+
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="recipientUsername">Recipient Username</label>
+          <label htmlFor="recipientUsername">Recipient</label>
           <input
             id="recipientUsername"
             type="text"
             value={recipientUsername}
             onChange={(e) => setRecipientUsername(e.target.value)}
-            placeholder="Enter recipient's username"
+            placeholder="username"
             required
-            disabled={!!defaultRecipient}
+            disabled={!!defaultRecipient || loading}
           />
         </div>
+
         <div className="form-group">
-          <label htmlFor="amount">Amount</label>
+          <label htmlFor="amount">Amount (USD)</label>
           <input
             id="amount"
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            placeholder="Enter amount"
+            placeholder="0.00"
             required
             min="0.01"
             step="0.01"
+            inputMode="decimal"
+            disabled={loading}
           />
+          <div className="quick-amounts" role="group" aria-label="Quick amount selection">
+            {QUICK_AMOUNTS.map((quick) => (
+              <button
+                key={quick}
+                type="button"
+                className="quick-amount-btn"
+                onClick={() => setAmount(String(quick))}
+                disabled={loading}
+              >
+                ${quick}
+              </button>
+            ))}
+          </div>
         </div>
-        <button type="submit" disabled={loading}>
-          {loading ? "Sending..." : "Send"}
-        </button>
-        <button type="button" onClick={onCancel} disabled={loading} className="danger">
-          Cancel
-        </button>
+
+        <div className="send-money-actions">
+          <button type="submit" disabled={loading}>{loading ? "Sending..." : "Send"}</button>
+          <button type="button" onClick={onCancel} disabled={loading} className="danger">Cancel</button>
+        </div>
       </form>
-      {message && <p className="message">{message}</p>}
+
+      {status.message && (
+        <p className={`money-status ${status.type === "error" ? "is-error" : "is-success"}`}>{status.message}</p>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { acceptInvite, rejectInvite } from "../api";
 import { PersonIcon } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 
-export default function InvitesPage({ invites, onUpdate }) {
+export default function InvitesPage({ invites, onUpdate, compact = false }) {
   const [localInvites, setLocalInvites] = useState(invites);
   const [actioningInvite, setActioningInvite] = useState(null);
   const [error, setError] = useState("");
@@ -35,7 +35,7 @@ export default function InvitesPage({ invites, onUpdate }) {
   };
 
   return (
-    <div className="invites-page">
+    <div className={`invites-page ${compact ? "invites-embedded" : ""}`}>
       <h2>Pending Invites</h2>
       {error && <p className="error-message invite-error">{error}</p>}
       {localInvites.length === 0 ? (

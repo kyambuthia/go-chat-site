@@ -112,7 +112,7 @@ p {
 
 nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--line);
@@ -264,6 +264,19 @@ button.accept {
   padding: var(--space-6);
 }
 
+.combined-tab {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.combined-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  overflow: hidden;
+}
+
 .chat-window {
   height: 100%;
   display: flex;
@@ -378,6 +391,7 @@ button.accept {
   display: flex;
   flex-direction: column;
   height: 100%;
+  padding: var(--space-4);
 }
 
 .contacts-list h2,
@@ -385,6 +399,10 @@ button.accept {
 .account-page h2,
 .chat-main h2 {
   margin-bottom: var(--space-4);
+}
+
+.contacts-list h2 {
+  margin-bottom: var(--space-3);
 }
 
 .contacts-list ul,
@@ -509,15 +527,55 @@ button.accept {
 }
 
 .send-money-form h3 {
+  margin-bottom: var(--space-1);
+}
+
+.send-money-header p {
   margin-bottom: var(--space-4);
 }
 
-.send-money-form button {
-  width: 100%;
+.send-money-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
 }
 
-.send-money-form button + button {
+.send-money-form button {
+  width: auto;
+}
+
+.quick-amounts {
   margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.quick-amount-btn {
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+  padding: 8px 12px;
+  font-size: 0.8rem;
+}
+
+.quick-amount-btn:hover {
+  border-color: #111;
+}
+
+.money-status {
+  margin-top: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+}
+
+.money-status.is-error {
+  background: #fff;
+}
+
+.money-status.is-success {
+  background: #f7f7f7;
 }
 
 .success-message,
@@ -531,6 +589,11 @@ button.accept {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   padding: var(--space-3);
+}
+
+.invites-page.invites-embedded {
+  height: auto;
+  padding: var(--space-4);
 }
 
 .avatar-placeholder {
@@ -597,6 +660,15 @@ button.accept {
   .input-area,
   .messages {
     padding: var(--space-3);
+  }
+
+  .contacts-list,
+  .invites-page.invites-embedded {
+    padding: var(--space-3);
+  }
+
+  .send-money-actions {
+    grid-template-columns: 1fr;
   }
 
   .messages .message {

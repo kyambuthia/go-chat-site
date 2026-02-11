@@ -3,10 +3,9 @@ import Chat from "./components/Chat";
 import Login from "./components/Login";
 import Register from "./components/Register";
 import ContactsPage from "./components/ContactsPage";
-import InvitesPage from "./components/InvitesPage";
 import AccountPage from "./components/AccountPage";
 import { setToken, getInvites } from "./api";
-import { ChatBubbleIcon, PersonIcon, EnvelopeClosedIcon, GearIcon } from "@radix-ui/react-icons";
+import { ChatBubbleIcon, PersonIcon, GearIcon } from "@radix-ui/react-icons";
 
 import { connectWebSocket } from "./ws";
 
@@ -128,9 +127,14 @@ function App() {
           />
         );
       case "contacts":
-        return <ContactsPage setSelectedContact={setSelectedContact} onlineUsers={onlineUsers} />;
-      case "invites":
-        return <InvitesPage invites={invites} onUpdate={fetchInvites} />;
+        return (
+          <ContactsPage
+            setSelectedContact={setSelectedContact}
+            onlineUsers={onlineUsers}
+            invites={invites}
+            onInvitesUpdate={fetchInvites}
+          />
+        );
       case "account":
         return <AccountPage handleLogout={handleLogout} />;
       default:
@@ -166,15 +170,11 @@ function App() {
             <span>Chat</span>
           </button>
           <button onClick={() => setActiveTab("contacts")} className={`nav-item ${activeTab === "contacts" ? "active" : ""}`}>
-            <div className="nav-icon-wrapper"><PersonIcon /></div>
-            <span>Contacts</span>
-          </button>
-          <button onClick={() => setActiveTab("invites")} className={`nav-item ${activeTab === "invites" ? "active" : ""}`}>
             <div className="nav-icon-wrapper">
-              <EnvelopeClosedIcon />
+              <PersonIcon />
               {invites.length > 0 && <div className="notification-dot"></div>}
             </div>
-            <span>Invites</span>
+            <span>People</span>
           </button>
           <button onClick={() => setActiveTab("account")} className={`nav-item ${activeTab === "account" ? "active" : ""}`}>
             <div className="nav-icon-wrapper"><GearIcon /></div>
