@@ -4,13 +4,52 @@ import { CheckIcon, PaperPlaneIcon, ArrowUpIcon, PersonIcon, MagnifyingGlassIcon
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import SendMoneyForm from "./SendMoneyForm";
 
+function formatTime(isoString) {
+  return new Date(isoString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function dayLabel(isoString) {
+  const date = new Date(isoString);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const dateKey = date.toDateString();
+  if (dateKey === today.toDateString()) {
+    return "Today";
+  }
+  if (dateKey === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+function groupMessagesByDay(messages) {
+  const groups = [];
+  let currentLabel = "";
+
+  for (const msg of messages) {
+    const createdAt = msg.createdAt || new Date().toISOString();
+    const label = dayLabel(createdAt);
+    if (label !== currentLabel) {
+      groups.push({ type: "day", label });
+      currentLabel = label;
+    }
+    groups.push({ type: "message", message: { ...msg, createdAt } });
+  }
+
+  return groups;
+}
+
 function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOnline }) {
   const [newMessage, setNewMessage] = useState("");
   const [showSendMoneyForm, setShowSendMoneyForm] = useState(false);
 
+  const timeline = useMemo(() => groupMessagesByDay(messages), [messages]);
+
   const handleSendMessage = () => {
     const trimmed = newMessage.trim();
-    if (!trimmed || !selectedContact) {
+    if (!trimmed || !selectedContact || !ws || ws.readyState !== WebSocket.OPEN) {
       return;
     }
 
@@ -19,6 +58,7 @@ function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOn
       type: "direct_message",
       to: selectedContact.username,
       body: trimmed,
+      createdAt: new Date().toISOString(),
     };
 
     ws.send(JSON.stringify(message));
@@ -53,12 +93,22 @@ function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOn
         <>
           <div className="messages">
             {messages.length === 0 && <p className="thread-empty">No messages yet. Start the conversation.</p>}
-            {messages.map((msg, index) => (
-              <div key={index} className={`message ${msg.sent ? "sent" : "received"}`}>
-                <div className="message-body">{msg.body}</div>
-                {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
-              </div>
-            ))}
+            {timeline.map((entry, index) => {
+              if (entry.type === "day") {
+                return <div key={`day-${entry.label}-${index}`} className="day-separator">{entry.label}</div>;
+              }
+
+              const msg = entry.message;
+              return (
+                <div key={`${msg.id || index}-${msg.createdAt}`} className={`message ${msg.sent ? "sent" : "received"}`}>
+                  <div className="message-body">{msg.body}</div>
+                  <div className="message-meta">
+                    <span className="message-time">{formatTime(msg.createdAt)}</span>
+                    {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="input-area">
             <input
@@ -68,7 +118,9 @@ function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOn
               placeholder="Type a message..."
               onKeyUp={(e) => e.key === "Enter" && handleSendMessage()}
             />
-            <button onClick={handleSendMessage} className="send-button"><PaperPlaneIcon className="send-button-icon" /></button>
+            <button onClick={handleSendMessage} className="send-button" disabled={!ws || ws.readyState !== WebSocket.OPEN}>
+              <PaperPlaneIcon className="send-button-icon" />
+            </button>
           </div>
         </>
       )}
@@ -123,9 +175,14 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     }
 
     if (lastWsMessage.type === "direct_message" && lastWsMessage.from) {
+      const normalized = {
+        ...lastWsMessage,
+        createdAt: new Date().toISOString(),
+      };
+
       setThreads((prev) => ({
         ...prev,
-        [lastWsMessage.from]: [...(prev[lastWsMessage.from] || []), lastWsMessage],
+        [lastWsMessage.from]: [...(prev[lastWsMessage.from] || []), normalized],
       }));
 
       if (selectedUsername !== lastWsMessage.from) {
@@ -178,9 +235,17 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       return;
     }
 
+    const normalized = {
+      ...message,
+      from: "Me",
+      sent: true,
+      delivered: false,
+      createdAt: message.createdAt || new Date().toISOString(),
+    };
+
     setThreads((prev) => ({
       ...prev,
-      [selectedUsername]: [...(prev[selectedUsername] || []), { ...message, from: "Me", sent: true, delivered: false }],
+      [selectedUsername]: [...(prev[selectedUsername] || []), normalized],
     }));
   };
 

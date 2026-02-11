@@ -270,6 +270,27 @@ button.accept {
   gap: var(--space-4);
 }
 
+.segmented-people {
+  gap: var(--space-3);
+}
+
+.segment-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.segment-btn {
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+}
+
+.segment-btn.active {
+  background: #111;
+  color: #fff;
+}
+
 .combined-section {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -331,6 +352,15 @@ button.accept {
   margin: auto 0;
 }
 
+.day-separator {
+  margin: var(--space-2) auto;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .messages .message-body {
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -358,8 +388,23 @@ button.accept {
   color: #111;
 }
 
-.message-status-icon {
+.message-meta {
   margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message.sent .message-meta {
+  justify-content: flex-end;
+}
+
+.message-time {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.message-status-icon {
   display: inline-flex;
   color: #111;
 }
@@ -576,6 +621,20 @@ button.accept {
 
 .money-status.is-success {
   background: #f7f7f7;
+}
+
+.confirm-panel {
+  margin-top: var(--space-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  background: #fff;
+}
+
+.confirm-title {
+  margin-bottom: var(--space-2);
+  color: #111;
+  font-weight: 700;
 }
 
 .success-message,

@@ -8,27 +8,42 @@ export default function SendMoneyForm({ onSendSuccess, onCancel, defaultRecipien
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState({ type: "", message: "" });
   const [loading, setLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const parsedAmount = useMemo(() => parseFloat(amount), [amount]);
 
   const setError = (message) => setStatus({ type: "error", message });
   const setSuccess = (message) => setStatus({ type: "success", message });
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setStatus({ type: "", message: "" });
-
+  const validate = () => {
     if (!recipientUsername.trim()) {
       setError("Recipient username is required.");
-      return;
+      return false;
     }
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       setError("Enter a valid positive amount.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setStatus({ type: "", message: "" });
+
+    if (!validate()) {
       return;
     }
 
+    setConfirmOpen(true);
+  };
+
+  const handleConfirmSend = async () => {
     setLoading(true);
+    setStatus({ type: "", message: "" });
+
     try {
       await sendMoney(recipientUsername.trim(), parsedAmount);
       setSuccess(`Sent $${parsedAmount.toFixed(2)} to ${recipientUsername.trim()}.`);
@@ -36,6 +51,7 @@ export default function SendMoneyForm({ onSendSuccess, onCancel, defaultRecipien
       if (!defaultRecipient) {
         setRecipientUsername("");
       }
+      setConfirmOpen(false);
       if (onSendSuccess) {
         onSendSuccess();
       }
@@ -97,10 +113,28 @@ export default function SendMoneyForm({ onSendSuccess, onCancel, defaultRecipien
         </div>
 
         <div className="send-money-actions">
-          <button type="submit" disabled={loading}>{loading ? "Sending..." : "Send"}</button>
+          <button type="submit" disabled={loading}>Review</button>
           <button type="button" onClick={onCancel} disabled={loading} className="danger">Cancel</button>
         </div>
       </form>
+
+      {confirmOpen && (
+        <div className="confirm-panel" role="dialog" aria-label="Confirm transfer">
+          <p className="confirm-title">Confirm Transfer</p>
+          <p>
+            Send <strong>${Number.isNaN(parsedAmount) ? "0.00" : parsedAmount.toFixed(2)}</strong> to
+            <strong> @{recipientUsername.trim()}</strong>?
+          </p>
+          <div className="send-money-actions">
+            <button type="button" onClick={handleConfirmSend} disabled={loading}>
+              {loading ? "Sending..." : "Confirm"}
+            </button>
+            <button type="button" onClick={() => setConfirmOpen(false)} disabled={loading} className="danger">
+              Back
+            </button>
+          </div>
+        </div>
+      )}
 
       {status.message && (
         <p className={`money-status ${status.type === "error" ? "is-error" : "is-success"}`}>{status.message}</p>

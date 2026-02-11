@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Chat from "./components/Chat";
 import Login from "./components/Login";
 import Register from "./components/Register";
@@ -19,6 +19,10 @@ function App() {
   const [invites, setInvites] = useState([]);
   const [lastWsMessage, setLastWsMessage] = useState(null);
   const [wsStatus, setWsStatus] = useState("offline");
+
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef(null);
+  const activeSocketRef = useRef(null);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -42,44 +46,84 @@ function App() {
       return;
     }
 
-    setWsStatus("connecting");
-    const token = localStorage.getItem("token");
-    const socket = connectWebSocket(token);
-    setWs(socket);
+    let cancelled = false;
 
-    socket.onopen = () => {
-      setWsStatus("online");
+    const clearReconnect = () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
     };
 
-    socket.onclose = () => {
-      setWsStatus("offline");
+    const scheduleReconnect = () => {
+      clearReconnect();
+      const attempt = reconnectAttemptRef.current;
+      const delay = Math.min(1000 * (2 ** attempt), 15000);
+      reconnectAttemptRef.current = attempt + 1;
+
+      reconnectTimerRef.current = setTimeout(() => {
+        if (!cancelled) {
+          connect();
+        }
+      }, delay);
     };
 
-    socket.onerror = () => {
-      setWsStatus("offline");
-    };
-
-    socket.onmessage = (event) => {
-      const message = JSON.parse(event.data);
-      if (message.type === "user_online") {
-        setOnlineUsers((prevOnlineUsers) =>
-          prevOnlineUsers.includes(message.from) ? prevOnlineUsers : [...prevOnlineUsers, message.from]
-        );
+    const connect = () => {
+      if (cancelled) {
         return;
       }
-      if (message.type === "user_offline") {
-        setOnlineUsers((prevOnlineUsers) => prevOnlineUsers.filter((user) => user !== message.from));
-        return;
-      }
-      setLastWsMessage(message);
+
+      setWsStatus("connecting");
+      const token = localStorage.getItem("token");
+      const socket = connectWebSocket(token);
+      activeSocketRef.current = socket;
+      setWs(socket);
+
+      socket.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setWsStatus("online");
+      };
+
+      socket.onclose = () => {
+        if (cancelled) {
+          return;
+        }
+        setWsStatus("offline");
+        scheduleReconnect();
+      };
+
+      socket.onerror = () => {
+        setWsStatus("offline");
+      };
+
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "user_online") {
+          setOnlineUsers((prevOnlineUsers) =>
+            prevOnlineUsers.includes(message.from) ? prevOnlineUsers : [...prevOnlineUsers, message.from]
+          );
+          return;
+        }
+        if (message.type === "user_offline") {
+          setOnlineUsers((prevOnlineUsers) => prevOnlineUsers.filter((user) => user !== message.from));
+          return;
+        }
+        setLastWsMessage(message);
+      };
     };
 
+    connect();
     fetchInvites();
     const intervalId = setInterval(fetchInvites, 7000);
 
     return () => {
-      socket.close();
+      cancelled = true;
+      clearReconnect();
       clearInterval(intervalId);
+      if (activeSocketRef.current) {
+        activeSocketRef.current.close();
+        activeSocketRef.current = null;
+      }
     };
   }, [isLoggedIn]);
 
@@ -94,6 +138,15 @@ function App() {
     localStorage.removeItem("token");
     setToken(null);
     setIsLoggedIn(false);
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptRef.current = 0;
+    if (activeSocketRef.current) {
+      activeSocketRef.current.close();
+      activeSocketRef.current = null;
+    }
     setWs(null);
     setOnlineUsers([]);
     setLastWsMessage(null);
@@ -111,7 +164,7 @@ function App() {
       );
     }
 
-    if (!ws) {
+    if (!ws && wsStatus !== "offline") {
       return <div className="status-block">Connecting...</div>;
     }
 
