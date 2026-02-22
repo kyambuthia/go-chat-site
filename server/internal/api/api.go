@@ -1,8 +1,11 @@
 package api
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
@@ -72,8 +75,22 @@ func (r *statusRecorder) WriteHeader(code int) {
 func loggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		reqID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		if reqID == "" {
+			reqID = newRequestID()
+		}
+		w.Header().Set("X-Request-ID", reqID)
+
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Printf("method=%s path=%s status=%d duration_ms=%d", r.Method, r.URL.Path, rec.status, time.Since(start).Milliseconds())
+		log.Printf("request_id=%s method=%s path=%s status=%d duration_ms=%d", reqID, r.Method, r.URL.Path, rec.status, time.Since(start).Milliseconds())
 	})
+}
+
+func newRequestID() string {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return time.Now().UTC().Format("20060102150405.000000000")
+	}
+	return hex.EncodeToString(b[:])
 }
