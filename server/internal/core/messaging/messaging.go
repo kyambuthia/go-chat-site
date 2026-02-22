@@ -1,6 +1,9 @@
 package messaging
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type UserID int
 
@@ -34,6 +37,17 @@ type DeliveryReceipt struct {
 	MessageID int64
 	Delivered bool
 	Reason    string
+}
+
+// StoredMessage is the durable message record shape used for persistence and sync.
+type StoredMessage struct {
+	ID          int64
+	FromUserID  int
+	ToUserID    int
+	Body        string
+	CreatedAt   time.Time
+	DeliveredAt *time.Time
+	ReadAt      *time.Time
 }
 
 // Transport is the adapter seam for centralized relay today and P2P transports later.
