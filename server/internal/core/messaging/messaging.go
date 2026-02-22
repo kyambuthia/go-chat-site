@@ -16,11 +16,11 @@ const (
 
 // Message is the normalized real-time payload envelope for the messaging domain.
 type Message struct {
-	ID   int64
-	Type MessageKind
-	From string
-	To   string
-	Body string
+	ID   int64       `json:"id,omitempty"`
+	Type MessageKind `json:"type"`
+	From string      `json:"from,omitempty"`
+	To   string      `json:"to,omitempty"`
+	Body string      `json:"body,omitempty"`
 }
 
 // Thread models a future conversation primitive (DM thread, group thread, marketplace order thread).
