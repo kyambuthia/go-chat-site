@@ -4,7 +4,7 @@ import Login from "./components/Login";
 import Register from "./components/Register";
 import ContactsPage from "./components/ContactsPage";
 import AccountPage from "./components/AccountPage";
-import { setToken, getInvites } from "./api";
+import { setToken, getInvites, setAuthErrorHandler } from "./api";
 import { ChatBubbleIcon, PersonIcon, GearIcon } from "@radix-ui/react-icons";
 
 import { connectWebSocket } from "./ws";
@@ -154,6 +154,18 @@ function App() {
     setInvites([]);
     setWsStatus("offline");
   };
+
+  useEffect(() => {
+    setAuthErrorHandler((message) => {
+      if (message === "invalid token") {
+        handleLogout();
+      }
+    });
+
+    return () => {
+      setAuthErrorHandler(null);
+    };
+  }, []);
 
   const renderContent = () => {
     if (!isLoggedIn) {

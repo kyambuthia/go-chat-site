@@ -1,4 +1,5 @@
 let token = localStorage.getItem("token");
+let authErrorHandler = null;
 
 const getAuthHeaders = () => {
   const headers = {
@@ -12,6 +13,10 @@ const getAuthHeaders = () => {
 
 export const setToken = (newToken) => {
   token = newToken;
+};
+
+export const setAuthErrorHandler = (handler) => {
+  authErrorHandler = handler;
 };
 
 const apiRequest = async (url, options = {}) => {
@@ -29,6 +34,9 @@ const apiRequest = async (url, options = {}) => {
       const payload = await response.json();
       if (payload?.error) {
         errMsg = payload.error;
+        if (payload.error === "invalid token" && typeof authErrorHandler === "function") {
+          authErrorHandler(payload.error);
+        }
       }
     } catch (_err) {
       // ignore non-json errors
