@@ -113,6 +113,14 @@ func (f *fakePersistenceService) ListInbox(ctx context.Context, userID int, limi
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = beforeID
+	_ = limit
+	return nil, nil
+}
+
 func TestDurableRelayService_SendDirect_PersistsAndMarksDeliveredOnSuccess(t *testing.T) {
 	tp := &fakeTransport{ok: true}
 	ps := &fakePersistenceService{stored: StoredMessage{ID: 123}}

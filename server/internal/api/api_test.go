@@ -482,6 +482,30 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 			t.Fatal("expected delivered_at field")
 		}
 	})
+
+	t.Run("supports before_id cursor pagination", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?before_id="+strconv.FormatInt(lastID, 10)+"&limit=10", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if len(resp) != 1 {
+			t.Fatalf("expected 1 message before cursor, got %d", len(resp))
+		}
+		if got := int64(resp[0]["id"].(float64)); got != firstID {
+			t.Fatalf("id = %d, want %d", got, firstID)
+		}
+		if got := resp[0]["body"].(string); got != "hello" {
+			t.Fatalf("body = %q, want hello", got)
+		}
+	})
 }
 
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {

@@ -28,6 +28,7 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := 0
+	beforeID := int64(0)
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
@@ -36,13 +37,27 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
+	if raw := r.URL.Query().Get("before_id"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid before_id"), http.StatusBadRequest)
+			return
+		}
+		beforeID = n
+	}
 
 	if h.Messaging == nil {
 		web.JSONError(w, errors.New("messaging sync unavailable"), http.StatusServiceUnavailable)
 		return
 	}
 
-	inbox, err := h.Messaging.ListInbox(r.Context(), userID, limit)
+	var inbox []coremsg.StoredMessage
+	var err error
+	if beforeID > 0 {
+		inbox, err = h.Messaging.ListInboxBefore(r.Context(), userID, beforeID, limit)
+	} else {
+		inbox, err = h.Messaging.ListInbox(r.Context(), userID, limit)
+	}
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return

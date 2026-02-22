@@ -19,6 +19,8 @@ type fakeMessagingPersistence struct {
 	listErr         error
 	lastUserID      int
 	lastLimit       int
+	lastBeforeID    int64
+	listBeforeErr   error
 	lastDeliveredID int64
 	deliveredErr    error
 	lastReadID      int64
@@ -62,6 +64,14 @@ func (f *fakeMessagingPersistence) ListInbox(ctx context.Context, userID int, li
 	f.lastUserID = userID
 	f.lastLimit = limit
 	return f.listResp, f.listErr
+}
+
+func (f *fakeMessagingPersistence) ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastBeforeID = beforeID
+	f.lastLimit = limit
+	return f.listResp, f.listBeforeErr
 }
 
 func TestMessagesHandler_GetInbox_UsesPersistenceServiceAndSupportsLimit(t *testing.T) {
@@ -109,10 +119,39 @@ func TestMessagesHandler_GetInbox_UsesPersistenceServiceAndSupportsLimit(t *test
 	}
 }
 
+func TestMessagesHandler_GetInbox_SupportsBeforeIDCursor(t *testing.T) {
+	svc := &fakeMessagingPersistence{}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?before_id=99&limit=10", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+	h.GetInbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if svc.lastUserID != 2 || svc.lastBeforeID != 99 || svc.lastLimit != 10 {
+		t.Fatalf("unexpected ListInboxBefore call user=%d before=%d limit=%d", svc.lastUserID, svc.lastBeforeID, svc.lastLimit)
+	}
+}
+
 func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid limit", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
 		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?limit=abc", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetInbox(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("invalid before_id", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?before_id=abc", nil)
 		req = req.WithContext(auth.WithUserID(req.Context(), 2))
 		rr := httptest.NewRecorder()
 
