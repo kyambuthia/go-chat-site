@@ -271,3 +271,45 @@ func TestAdapter_ListInboxWithUser_FiltersByCounterparty(t *testing.T) {
 		t.Fatalf("unexpected filtered before-page: %+v", page)
 	}
 }
+
+func TestAdapter_ListUnreadInbox_FiltersReadMessages(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	readMsg, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "read-message",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage read msg: %v", err)
+	}
+	unreadMsg, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "unread-message",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage unread msg: %v", err)
+	}
+
+	if err := a.MarkRead(context.Background(), readMsg.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("MarkRead error: %v", err)
+	}
+
+	inbox, err := a.ListUnreadInbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListUnreadInbox error: %v", err)
+	}
+	if len(inbox) != 1 {
+		t.Fatalf("expected 1 unread message, got %d", len(inbox))
+	}
+	if inbox[0].ID != unreadMsg.ID || inbox[0].Body != "unread-message" {
+		t.Fatalf("unexpected unread inbox contents: %+v", inbox)
+	}
+	if inbox[0].ReadAt != nil {
+		t.Fatalf("expected unread message to have nil read_at, got %+v", inbox[0])
+	}
+}

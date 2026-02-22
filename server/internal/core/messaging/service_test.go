@@ -113,6 +113,13 @@ func (f *fakePersistenceService) ListInbox(ctx context.Context, userID int, limi
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID
@@ -121,7 +128,23 @@ func (f *fakePersistenceService) ListInboxWithUser(ctx context.Context, userID i
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = withUserID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = beforeID
+	_ = limit
+	return nil, nil
+}
+
+func (f *fakePersistenceService) ListUnreadInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID
 	_ = beforeID
@@ -138,6 +161,15 @@ func (f *fakePersistenceService) ListInboxBeforeWithUser(ctx context.Context, us
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListUnreadInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = withUserID
+	_ = beforeID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID
@@ -146,7 +178,24 @@ func (f *fakePersistenceService) ListInboxAfter(ctx context.Context, userID int,
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListUnreadInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = afterID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = withUserID
+	_ = afterID
+	_ = limit
+	return nil, nil
+}
+
+func (f *fakePersistenceService) ListUnreadInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID
 	_ = withUserID

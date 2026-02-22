@@ -32,6 +32,7 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	beforeID := int64(0)
 	afterID := int64(0)
 	withUserID := 0
+	unreadOnly := false
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
@@ -64,6 +65,14 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		withUserID = n
 	}
+	if raw := r.URL.Query().Get("unread_only"); raw != "" {
+		v, err := strconv.ParseBool(raw)
+		if err != nil {
+			web.JSONError(w, errors.New("invalid unread_only"), http.StatusBadRequest)
+			return
+		}
+		unreadOnly = v
+	}
 	if beforeID > 0 && afterID > 0 {
 		web.JSONError(w, errors.New("before_id and after_id cannot be combined"), http.StatusBadRequest)
 		return
@@ -76,16 +85,28 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 
 	var inbox []coremsg.StoredMessage
 	var err error
-	if beforeID > 0 && withUserID > 0 {
+	if beforeID > 0 && withUserID > 0 && unreadOnly {
+		inbox, err = h.Messaging.ListUnreadInboxBeforeWithUser(r.Context(), userID, withUserID, beforeID, limit)
+	} else if beforeID > 0 && withUserID > 0 {
 		inbox, err = h.Messaging.ListInboxBeforeWithUser(r.Context(), userID, withUserID, beforeID, limit)
+	} else if beforeID > 0 && unreadOnly {
+		inbox, err = h.Messaging.ListUnreadInboxBefore(r.Context(), userID, beforeID, limit)
 	} else if beforeID > 0 {
 		inbox, err = h.Messaging.ListInboxBefore(r.Context(), userID, beforeID, limit)
+	} else if afterID > 0 && withUserID > 0 && unreadOnly {
+		inbox, err = h.Messaging.ListUnreadInboxAfterWithUser(r.Context(), userID, withUserID, afterID, limit)
 	} else if afterID > 0 && withUserID > 0 {
 		inbox, err = h.Messaging.ListInboxAfterWithUser(r.Context(), userID, withUserID, afterID, limit)
+	} else if afterID > 0 && unreadOnly {
+		inbox, err = h.Messaging.ListUnreadInboxAfter(r.Context(), userID, afterID, limit)
 	} else if afterID > 0 {
 		inbox, err = h.Messaging.ListInboxAfter(r.Context(), userID, afterID, limit)
+	} else if withUserID > 0 && unreadOnly {
+		inbox, err = h.Messaging.ListUnreadInboxWithUser(r.Context(), userID, withUserID, limit)
 	} else if withUserID > 0 {
 		inbox, err = h.Messaging.ListInboxWithUser(r.Context(), userID, withUserID, limit)
+	} else if unreadOnly {
+		inbox, err = h.Messaging.ListUnreadInbox(r.Context(), userID, limit)
 	} else {
 		inbox, err = h.Messaging.ListInbox(r.Context(), userID, limit)
 	}

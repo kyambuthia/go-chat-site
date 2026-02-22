@@ -572,6 +572,46 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 			t.Fatalf("status = %d, want 400", rr.Code)
 		}
 	})
+
+	t.Run("supports unread_only filter", func(t *testing.T) {
+		if _, err := s.DB.Exec(`INSERT INTO message_deliveries (message_id, delivered_at, read_at) VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT(message_id) DO UPDATE SET delivered_at=excluded.delivered_at, read_at=excluded.read_at`, firstID); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?unread_only=true&with_user_id="+strconv.Itoa(aliceID)+"&limit=10", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if len(resp) != 1 {
+			t.Fatalf("expected 1 unread message, got %d", len(resp))
+		}
+		if got := int64(resp[0]["id"].(float64)); got != lastID {
+			t.Fatalf("id = %d, want %d", got, lastID)
+		}
+		if _, ok := resp[0]["read_at"]; ok {
+			t.Fatal("did not expect read_at field on unread-only result")
+		}
+	})
+
+	t.Run("rejects invalid unread_only filter", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?unread_only=maybe", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
 }
 
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {

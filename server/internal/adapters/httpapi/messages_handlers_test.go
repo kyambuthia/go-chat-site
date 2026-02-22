@@ -20,6 +20,7 @@ type fakeMessagingPersistence struct {
 	lastUserID       int
 	lastLimit        int
 	lastWithUserID   int
+	lastUnreadOnly   bool
 	lastBeforeID     int64
 	listBeforeErr    error
 	lastAfterID      int64
@@ -84,6 +85,14 @@ func (f *fakeMessagingPersistence) ListInbox(ctx context.Context, userID int, li
 	return f.listResp, f.listErr
 }
 
+func (f *fakeMessagingPersistence) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastLimit = limit
+	f.lastUnreadOnly = true
+	return f.listResp, f.listErr
+}
+
 func (f *fakeMessagingPersistence) ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
@@ -92,11 +101,29 @@ func (f *fakeMessagingPersistence) ListInboxWithUser(ctx context.Context, userID
 	return f.listResp, f.listWithUserErr
 }
 
+func (f *fakeMessagingPersistence) ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastWithUserID = withUserID
+	f.lastLimit = limit
+	f.lastUnreadOnly = true
+	return f.listResp, f.listWithUserErr
+}
+
 func (f *fakeMessagingPersistence) ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
 	f.lastBeforeID = beforeID
 	f.lastLimit = limit
+	return f.listResp, f.listBeforeErr
+}
+
+func (f *fakeMessagingPersistence) ListUnreadInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastBeforeID = beforeID
+	f.lastLimit = limit
+	f.lastUnreadOnly = true
 	return f.listResp, f.listBeforeErr
 }
 
@@ -109,11 +136,30 @@ func (f *fakeMessagingPersistence) ListInboxBeforeWithUser(ctx context.Context, 
 	return f.listResp, f.listBeforeErr
 }
 
+func (f *fakeMessagingPersistence) ListUnreadInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastWithUserID = withUserID
+	f.lastBeforeID = beforeID
+	f.lastLimit = limit
+	f.lastUnreadOnly = true
+	return f.listResp, f.listBeforeErr
+}
+
 func (f *fakeMessagingPersistence) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
 	f.lastAfterID = afterID
 	f.lastLimit = limit
+	return f.listResp, f.listAfterErr
+}
+
+func (f *fakeMessagingPersistence) ListUnreadInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastAfterID = afterID
+	f.lastLimit = limit
+	f.lastUnreadOnly = true
 	return f.listResp, f.listAfterErr
 }
 
@@ -123,6 +169,16 @@ func (f *fakeMessagingPersistence) ListInboxAfterWithUser(ctx context.Context, u
 	f.lastWithUserID = withUserID
 	f.lastAfterID = afterID
 	f.lastLimit = limit
+	return f.listResp, f.listAfterErr
+}
+
+func (f *fakeMessagingPersistence) ListUnreadInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastWithUserID = withUserID
+	f.lastAfterID = afterID
+	f.lastLimit = limit
+	f.lastUnreadOnly = true
 	return f.listResp, f.listAfterErr
 }
 
@@ -234,6 +290,23 @@ func TestMessagesHandler_GetInbox_SupportsWithUserFilter(t *testing.T) {
 	}
 }
 
+func TestMessagesHandler_GetInbox_SupportsUnreadOnlyFilter(t *testing.T) {
+	svc := &fakeMessagingPersistence{}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?unread_only=true&limit=10", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+	h.GetInbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if !svc.lastUnreadOnly || svc.lastUserID != 2 || svc.lastLimit != 10 {
+		t.Fatalf("unexpected unread ListInbox call unread=%v user=%d limit=%d", svc.lastUnreadOnly, svc.lastUserID, svc.lastLimit)
+	}
+}
+
 func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid limit", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
@@ -274,6 +347,18 @@ func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid with_user_id", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
 		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?with_user_id=abc", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetInbox(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("invalid unread_only", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?unread_only=maybe", nil)
 		req = req.WithContext(auth.WithUserID(req.Context(), 2))
 		rr := httptest.NewRecorder()
 

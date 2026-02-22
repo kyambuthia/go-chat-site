@@ -27,6 +27,7 @@ type fakePersistenceRepo struct {
 	lastListUserID              int
 	lastListLimit               int
 	lastListWithUserID          int
+	lastListUnreadOnly          bool
 }
 
 func (f *fakePersistenceRepo) SaveDirectMessage(ctx context.Context, msg StoredMessage) (StoredMessage, error) {
@@ -76,6 +77,15 @@ func (f *fakePersistenceRepo) ListInbox(ctx context.Context, userID int, limit i
 	_ = ctx
 	f.lastListUserID = userID
 	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	f.lastListUserID = userID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = true
 	return f.listResp, f.listErr
 }
 
@@ -84,6 +94,16 @@ func (f *fakePersistenceRepo) ListInboxWithUser(ctx context.Context, userID int,
 	f.lastListUserID = userID
 	f.lastListWithUserID = withUserID
 	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	f.lastListUserID = userID
+	f.lastListWithUserID = withUserID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = true
 	return f.listResp, f.listErr
 }
 
@@ -92,6 +112,16 @@ func (f *fakePersistenceRepo) ListInboxBefore(ctx context.Context, userID int, b
 	_ = beforeID
 	f.lastListUserID = userID
 	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListUnreadInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = beforeID
+	f.lastListUserID = userID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = true
 	return f.listResp, f.listErr
 }
 
@@ -101,6 +131,17 @@ func (f *fakePersistenceRepo) ListInboxBeforeWithUser(ctx context.Context, userI
 	f.lastListUserID = userID
 	f.lastListWithUserID = withUserID
 	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListUnreadInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = beforeID
+	f.lastListUserID = userID
+	f.lastListWithUserID = withUserID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = true
 	return f.listResp, f.listErr
 }
 
@@ -109,6 +150,16 @@ func (f *fakePersistenceRepo) ListInboxAfter(ctx context.Context, userID int, af
 	_ = afterID
 	f.lastListUserID = userID
 	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListUnreadInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = afterID
+	f.lastListUserID = userID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = true
 	return f.listResp, f.listErr
 }
 
@@ -118,6 +169,17 @@ func (f *fakePersistenceRepo) ListInboxAfterWithUser(ctx context.Context, userID
 	f.lastListUserID = userID
 	f.lastListWithUserID = withUserID
 	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListUnreadInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = afterID
+	f.lastListUserID = userID
+	f.lastListWithUserID = withUserID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = true
 	return f.listResp, f.listErr
 }
 
@@ -214,6 +276,21 @@ func TestPersistenceService_ListInboxWithUser_UsesDefaultLimitAndDelegates(t *te
 	}
 	if repo.lastListUserID != 2 || repo.lastListWithUserID != 7 {
 		t.Fatalf("unexpected list-with-user call user=%d with_user=%d", repo.lastListUserID, repo.lastListWithUserID)
+	}
+	if repo.lastListLimit != 100 {
+		t.Fatalf("default limit = %d, want 100", repo.lastListLimit)
+	}
+}
+
+func TestPersistenceService_ListUnreadInbox_UsesDefaultLimitAndDelegates(t *testing.T) {
+	repo := &fakePersistenceRepo{}
+	svc := NewPersistenceService(repo)
+
+	if _, err := svc.ListUnreadInbox(context.Background(), 2, 0); err != nil {
+		t.Fatalf("ListUnreadInbox error: %v", err)
+	}
+	if repo.lastListUserID != 2 || !repo.lastListUnreadOnly {
+		t.Fatalf("unexpected unread list call user=%d unread=%v", repo.lastListUserID, repo.lastListUnreadOnly)
 	}
 	if repo.lastListLimit != 100 {
 		t.Fatalf("default limit = %d, want 100", repo.lastListLimit)
