@@ -1,0 +1,19 @@
+flowchart LR
+    C[Client Web App] -->|HTTP /api/*| H[adapters/httpapi]
+    C -->|WS /ws| W[adapters/transport/wsrelay]
+
+    H --> CI[core/identity]
+    H --> CC[core/contacts]
+    H --> CL[core/ledger]
+    H --> CM[core/messaging]
+    H --> MK[core/marketplace]
+
+    W --> CM
+    W --> CI
+
+    H --> S[(adapter: store/sqlite)]
+    W --> WR[(in-memory relay hub)]
+
+    CM -. future .-> P2P[adapter: p2p transport]
+    CL -. future .-> PAY[adapter: payment rails]
+    MK -. future .-> ESC[adapter: escrow service]
