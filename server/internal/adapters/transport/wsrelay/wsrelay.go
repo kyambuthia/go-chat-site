@@ -30,22 +30,44 @@ type client struct {
 }
 
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[int]*client
-	ctx     context.Context
-	cancel  context.CancelFunc
+	mu              sync.RWMutex
+	clients         map[int]*client
+	ctx             context.Context
+	cancel          context.CancelFunc
+	deliveryService coremsg.Service
 }
 
 func NewHub() *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Hub{
+	h := &Hub{
 		clients: make(map[int]*client),
 		ctx:     ctx,
 		cancel:  cancel,
 	}
+	h.deliveryService = coremsg.NewRelayService(h)
+	return h
 }
 
 var _ coremsg.Transport = (*Hub)(nil)
+
+func (h *Hub) SetDeliveryService(svc coremsg.Service) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if svc == nil {
+		h.deliveryService = coremsg.NewRelayService(h)
+		return
+	}
+	h.deliveryService = svc
+}
+
+func (h *Hub) delivery() coremsg.Service {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.deliveryService == nil {
+		return coremsg.NewRelayService(h)
+	}
+	return h.deliveryService
+}
 
 func (h *Hub) Run() {
 	<-h.ctx.Done()
@@ -266,7 +288,7 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 			conn:            conn,
 			send:            make(chan Message, 16),
 			hub:             h,
-			messaging:       coremsg.NewRelayService(h),
+			messaging:       h.delivery(),
 			resolveToUserID: resolveToUserID,
 		}
 		if err := h.AddClient(c); err != nil {

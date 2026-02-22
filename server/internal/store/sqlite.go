@@ -21,6 +21,14 @@ type SqliteStore struct {
 	DB *sql.DB
 }
 
+// SQLDB exposes the underlying database handle for adapter composition.
+func (s *SqliteStore) SQLDB() *sql.DB {
+	if s == nil {
+		return nil
+	}
+	return s.DB
+}
+
 type User struct {
 	ID           int    `json:"id"`
 	Username     string `json:"username"`

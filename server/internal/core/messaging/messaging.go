@@ -34,9 +34,10 @@ type Thread struct {
 
 // DeliveryReceipt captures adapter-level delivery outcomes.
 type DeliveryReceipt struct {
-	MessageID int64
-	Delivered bool
-	Reason    string
+	MessageID       int64
+	StoredMessageID int64
+	Delivered       bool
+	Reason          string
 }
 
 // StoredMessage is the durable message record shape used for persistence and sync.
