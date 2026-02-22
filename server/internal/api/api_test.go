@@ -262,3 +262,130 @@ func TestContactsAndInvitesRoutes_Compatibility(t *testing.T) {
 		}
 	})
 }
+
+func TestMeAndWalletRoutes_Compatibility(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliceToken, err := auth.GenerateToken(aliceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed wallet balances using the existing sqlite schema.
+	if _, err := s.DB.Exec(`INSERT OR IGNORE INTO wallet_accounts (user_id) VALUES (?), (?)`, aliceID, bobID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(`UPDATE wallet_accounts SET balance_cents = CASE user_id WHEN ? THEN 2000 WHEN ? THEN 300 ELSE balance_cents END`, aliceID, bobID); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := ws.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	t.Run("me route preserves response shape", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		rr := httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal me response: %v", err)
+		}
+		if got := int(resp["id"].(float64)); got != aliceID {
+			t.Fatalf("id = %d, want %d", got, aliceID)
+		}
+		if got := resp["username"].(string); got != "alice" {
+			t.Fatalf("username = %q, want alice", got)
+		}
+		if _, ok := resp["display_name"]; !ok {
+			t.Fatal("expected display_name field")
+		}
+		if _, ok := resp["avatar_url"]; !ok {
+			t.Fatal("expected avatar_url field")
+		}
+	})
+
+	t.Run("wallet get route preserves response shape", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/wallet", nil)
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		rr := httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal wallet response: %v", err)
+		}
+		if got := int(resp["user_id"].(float64)); got != aliceID {
+			t.Fatalf("user_id = %d, want %d", got, aliceID)
+		}
+		if got := int(resp["balance_cents"].(float64)); got != 2000 {
+			t.Fatalf("balance_cents = %d, want 2000", got)
+		}
+	})
+
+	t.Run("wallet send success and insufficient funds", func(t *testing.T) {
+		sendBody, _ := json.Marshal(map[string]any{"username": "bob", "amount": 5.25})
+		req := httptest.NewRequest(http.MethodPost, "/api/wallet/send", bytes.NewReader(sendBody))
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("send success status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+
+		var aliceBal, bobBal int64
+		if err := s.DB.QueryRow(`SELECT balance_cents FROM wallet_accounts WHERE user_id = ?`, aliceID).Scan(&aliceBal); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.DB.QueryRow(`SELECT balance_cents FROM wallet_accounts WHERE user_id = ?`, bobID).Scan(&bobBal); err != nil {
+			t.Fatal(err)
+		}
+		if aliceBal != 1475 || bobBal != 825 {
+			t.Fatalf("unexpected balances after send: alice=%d bob=%d", aliceBal, bobBal)
+		}
+
+		sendBody, _ = json.Marshal(map[string]any{"username": "bob", "amount": 50.00})
+		req = httptest.NewRequest(http.MethodPost, "/api/wallet/send", bytes.NewReader(sendBody))
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr = httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("send insufficient status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+		}
+	})
+}
