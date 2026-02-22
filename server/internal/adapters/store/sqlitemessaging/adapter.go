@@ -79,6 +79,35 @@ func (a *Adapter) ListInboxBefore(ctx context.Context, userID int, beforeID int6
 	return a.listInboxQuery(ctx, userID, beforeID, limit)
 }
 
+func (a *Adapter) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
+	rows, err := a.DB.QueryContext(ctx, `
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		       md.delivered_at, md.read_at
+		FROM messages m
+		LEFT JOIN message_deliveries md ON md.message_id = m.id
+		WHERE m.to_user_id = ? AND m.id > ?
+		ORDER BY m.id ASC
+		LIMIT ?
+	`, userID, afterID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]coremsg.StoredMessage, 0)
+	for rows.Next() {
+		msg, err := scanStoredMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (a *Adapter) listInboxQuery(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,

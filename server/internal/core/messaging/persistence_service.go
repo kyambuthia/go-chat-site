@@ -19,6 +19,7 @@ type MessageRepository interface {
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
+	ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
 }
 
 type PersistenceService interface {
@@ -29,6 +30,7 @@ type PersistenceService interface {
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
+	ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
 }
 
 type persistenceService struct {
@@ -79,4 +81,11 @@ func (s *persistenceService) ListInboxBefore(ctx context.Context, userID int, be
 		limit = 100
 	}
 	return s.repo.ListInboxBefore(ctx, userID, beforeID, limit)
+}
+
+func (s *persistenceService) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListInboxAfter(ctx, userID, afterID, limit)
 }

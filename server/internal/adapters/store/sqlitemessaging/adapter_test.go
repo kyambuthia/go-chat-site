@@ -189,3 +189,34 @@ func TestAdapter_ListInboxBefore_PaginatesByDescendingMessageID(t *testing.T) {
 		t.Fatalf("unexpected page order/contents: %+v", page)
 	}
 }
+
+func TestAdapter_ListInboxAfter_ReturnsNewerMessagesAscendingByID(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	var ids []int64
+	for _, body := range []string{"m1", "m2", "m3"} {
+		saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+			FromUserID: aliceID,
+			ToUserID:   bobID,
+			Body:       body,
+		})
+		if err != nil {
+			t.Fatalf("SaveDirectMessage error: %v", err)
+		}
+		ids = append(ids, saved.ID)
+	}
+
+	page, err := a.ListInboxAfter(context.Background(), bobID, ids[0], 10)
+	if err != nil {
+		t.Fatalf("ListInboxAfter error: %v", err)
+	}
+	if len(page) != 2 {
+		t.Fatalf("expected 2 messages after first, got %d", len(page))
+	}
+	if page[0].ID != ids[1] || page[1].ID != ids[2] {
+		t.Fatalf("unexpected ascending page order/contents: %+v", page)
+	}
+}

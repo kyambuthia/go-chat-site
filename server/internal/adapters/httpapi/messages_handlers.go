@@ -29,6 +29,7 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 
 	limit := 0
 	beforeID := int64(0)
+	afterID := int64(0)
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
@@ -45,6 +46,18 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		beforeID = n
 	}
+	if raw := r.URL.Query().Get("after_id"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid after_id"), http.StatusBadRequest)
+			return
+		}
+		afterID = n
+	}
+	if beforeID > 0 && afterID > 0 {
+		web.JSONError(w, errors.New("before_id and after_id cannot be combined"), http.StatusBadRequest)
+		return
+	}
 
 	if h.Messaging == nil {
 		web.JSONError(w, errors.New("messaging sync unavailable"), http.StatusServiceUnavailable)
@@ -55,6 +68,8 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if beforeID > 0 {
 		inbox, err = h.Messaging.ListInboxBefore(r.Context(), userID, beforeID, limit)
+	} else if afterID > 0 {
+		inbox, err = h.Messaging.ListInboxAfter(r.Context(), userID, afterID, limit)
 	} else {
 		inbox, err = h.Messaging.ListInbox(r.Context(), userID, limit)
 	}

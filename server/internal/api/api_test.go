@@ -506,6 +506,30 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 			t.Fatalf("body = %q, want hello", got)
 		}
 	})
+
+	t.Run("supports after_id cursor polling", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?after_id="+strconv.FormatInt(firstID, 10)+"&limit=10", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if len(resp) != 1 {
+			t.Fatalf("expected 1 newer message, got %d", len(resp))
+		}
+		if got := int64(resp[0]["id"].(float64)); got != lastID {
+			t.Fatalf("id = %d, want %d", got, lastID)
+		}
+		if got := resp[0]["body"].(string); got != "second" {
+			t.Fatalf("body = %q, want second", got)
+		}
+	})
 }
 
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {

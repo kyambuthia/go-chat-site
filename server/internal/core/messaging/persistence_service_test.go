@@ -86,6 +86,14 @@ func (f *fakePersistenceRepo) ListInboxBefore(ctx context.Context, userID int, b
 	return f.listResp, f.listErr
 }
 
+func (f *fakePersistenceRepo) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = afterID
+	f.lastListUserID = userID
+	f.lastListLimit = limit
+	return f.listResp, f.listErr
+}
+
 func TestPersistenceService_StoreDirectMessage_DelegatesAndSetsDefaults(t *testing.T) {
 	repo := &fakePersistenceRepo{}
 	svc := NewPersistenceService(repo)

@@ -21,6 +21,8 @@ type fakeMessagingPersistence struct {
 	lastLimit       int
 	lastBeforeID    int64
 	listBeforeErr   error
+	lastAfterID     int64
+	listAfterErr    error
 	lastDeliveredID int64
 	deliveredErr    error
 	lastReadID      int64
@@ -72,6 +74,14 @@ func (f *fakeMessagingPersistence) ListInboxBefore(ctx context.Context, userID i
 	f.lastBeforeID = beforeID
 	f.lastLimit = limit
 	return f.listResp, f.listBeforeErr
+}
+
+func (f *fakeMessagingPersistence) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastAfterID = afterID
+	f.lastLimit = limit
+	return f.listResp, f.listAfterErr
 }
 
 func TestMessagesHandler_GetInbox_UsesPersistenceServiceAndSupportsLimit(t *testing.T) {
@@ -136,6 +146,23 @@ func TestMessagesHandler_GetInbox_SupportsBeforeIDCursor(t *testing.T) {
 	}
 }
 
+func TestMessagesHandler_GetInbox_SupportsAfterIDCursor(t *testing.T) {
+	svc := &fakeMessagingPersistence{}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?after_id=50&limit=10", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+	h.GetInbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if svc.lastUserID != 2 || svc.lastAfterID != 50 || svc.lastLimit != 10 {
+		t.Fatalf("unexpected ListInboxAfter call user=%d after=%d limit=%d", svc.lastUserID, svc.lastAfterID, svc.lastLimit)
+	}
+}
+
 func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid limit", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
@@ -152,6 +179,30 @@ func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid before_id", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
 		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?before_id=abc", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetInbox(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("invalid after_id", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?after_id=abc", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetInbox(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("before and after are mutually exclusive", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?before_id=10&after_id=5", nil)
 		req = req.WithContext(auth.WithUserID(req.Context(), 2))
 		rr := httptest.NewRecorder()
 
