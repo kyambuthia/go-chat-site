@@ -1,98 +1,89 @@
-# Database Schema (Refactored)
+# Data Model Direction (SQLite Today, Adapter-Friendly Tomorrow)
 
-## Core Entities
+## Purpose
+This document describes:
+- current SQLite-backed entities that power the app today
+- the target domain model evolution for messaging, ledger, escrow, and marketplace
+- boundaries that allow SQLite to remain the first adapter while future stores/rails are added
 
-### `users`
+## Current Operational Model (Implemented)
+### Identity / Users
+- `users`
+  - username/password hash
+  - optional profile fields (`display_name`, `avatar_url`)
 
-Stores account identity and profile data.
+### Contacts
+- `contacts`
+  - directional edges
+  - accepted invite creates reciprocal rows
 
-```sql
-CREATE TABLE users (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  username TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  display_name TEXT,
-  avatar_url TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-```
+### Invites
+- `contact_invites`
+  - pending/accepted/rejected invite workflow
 
-### `contacts`
+### Wallet (Compatibility Name)
+- `wallet_accounts`
+  - integer `balance_cents`
+- `wallet_transfers`
+  - transfer records for auditability
 
-Directional contact edges. Accepted invites create two rows for bidirectional contact.
+## Domain Renaming Direction: Wallet -> Ledger
+Implementation may keep current table names initially, but domain semantics should move to:
+- `ledger_accounts`
+- `ledger_transfers`
+- `ledger_events`
 
-```sql
-CREATE TABLE contacts (
-  user_id INTEGER NOT NULL,
-  contact_id INTEGER NOT NULL,
-  PRIMARY KEY (user_id, contact_id),
-  FOREIGN KEY(user_id) REFERENCES users(id),
-  FOREIGN KEY(contact_id) REFERENCES users(id)
-);
-```
+Why:
+- "wallet" implies product UX only
+- "ledger" better supports escrow, reversals, settlements, and external rails
 
-## Invites
+## Target Messaging Data Model (Planned)
+### Core Messaging
+- `message_threads`
+- `messages`
+- `message_receipts`
+- `message_sync_cursors`
 
-### `contact_invites`
+### E2EE / Device-Key Support (if adopted)
+- `device_identities`
+- `device_prekeys`
+- `device_sessions` (optional server metadata only)
 
-Canonical invite table with one relationship per unordered user pair.
+Notes:
+- ciphertext storage is expected if E2EE is implemented
+- server should avoid storing plaintext content long-term if product direction requires privacy-first posture (`TODO: VERIFY`)
 
-```sql
-CREATE TABLE contact_invites (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  requester_id INTEGER NOT NULL,
-  recipient_id INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CHECK (requester_id <> recipient_id),
-  FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
-  FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
-);
-```
+## Target Marketplace Data Model (Planned)
+- `marketplace_listings`
+- `marketplace_offers`
+- `marketplace_orders`
+- `marketplace_order_events`
+- `marketplace_disputes`
 
-## Messaging
+Notes:
+- keep order/event state transitions append-only where possible
+- do not bake jurisdiction-specific compliance policy into schema too early (`TODO: VERIFY`)
 
-### `messages`
+## Target Escrow / Payment Adapter Data Model (Planned)
+- `escrow_holds`
+- `escrow_events`
+- `payment_instructions`
+- `payment_settlements`
+- `payment_rail_attempts`
 
-Stores direct message payloads.
+Notes:
+- separate business intent (escrow/order) from rail execution (payment adapters)
+- preserve correlation IDs for audits and reconciliation
 
-### `message_deliveries`
+## Migration Strategy
+1. Keep existing SQLite tables and behavior stable.
+2. Add service/domain abstractions first.
+3. Add new tables in additive migrations (no destructive rewrites).
+4. Backfill or dual-write only after behavior is covered by tests.
+5. Remove compatibility names only after client/server migration is complete.
 
-Tracks delivery/read timestamps per message.
-
-## Wallet
-
-### `wallet_accounts`
-
-Balances in integer cents.
-
-```sql
-CREATE TABLE wallet_accounts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL UNIQUE,
-  balance_cents INTEGER NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CHECK (balance_cents >= 0),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-```
-
-### `wallet_transfers`
-
-Transfer ledger for auditability.
-
-```sql
-CREATE TABLE wallet_transfers (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  sender_user_id INTEGER NOT NULL,
-  recipient_user_id INTEGER NOT NULL,
-  amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
-  note TEXT NOT NULL DEFAULT '',
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CHECK (sender_user_id <> recipient_user_id),
-  FOREIGN KEY (sender_user_id) REFERENCES users(id) ON DELETE RESTRICT,
-  FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE RESTRICT
-);
-```
+## Invariants (Must Hold)
+- Monetary values stored in integer cents (or smallest unit per currency) for now.
+- Transfers/ledger movements must remain transactional.
+- Message delivery/receipt semantics must be explicit (no silent partial success).
+- State transitions must be auditable (prefer append-only events for critical domains).
