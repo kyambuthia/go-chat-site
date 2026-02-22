@@ -2,9 +2,11 @@ package api
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
@@ -478,6 +480,88 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 		}
 		if _, ok := resp[1]["delivered_at"]; !ok {
 			t.Fatal("expected delivered_at field")
+		}
+	})
+}
+
+func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(bobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, aliceID, bobID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	messageID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hub := ws.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	t.Run("unauthorized without token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":1}`)))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+	})
+
+	t.Run("marks read and delivered timestamps", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":`+strconv.FormatInt(messageID, 10)+`}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+
+		var deliveredAt, readAt sql.NullTime
+		if err := s.DB.QueryRow(`SELECT delivered_at, read_at FROM message_deliveries WHERE message_id = ?`, messageID).Scan(&deliveredAt, &readAt); err != nil {
+			t.Fatalf("query message_deliveries: %v", err)
+		}
+		if !deliveredAt.Valid || !readAt.Valid {
+			t.Fatalf("expected delivered/read timestamps, got delivered=%v read=%v", deliveredAt.Valid, readAt.Valid)
+		}
+	})
+
+	t.Run("invalid request body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":0}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
 		}
 	})
 }
