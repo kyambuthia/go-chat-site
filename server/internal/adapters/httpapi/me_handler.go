@@ -6,12 +6,12 @@ import (
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
-	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	coreid "github.com/kyambuthia/go-chat-site/server/internal/core/identity"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type MeHandler struct {
-	Store store.MeStore
+	Identity coreid.ProfileService
 }
 
 func (h *MeHandler) GetMe(w http.ResponseWriter, r *http.Request) {
@@ -26,12 +26,17 @@ func (h *MeHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Store.GetUserByID(userID)
+	profile, err := h.Identity.GetProfile(r.Context(), coreid.UserID(userID))
 	if err != nil {
 		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(user)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id":           int(profile.UserID),
+		"username":     profile.Username,
+		"display_name": profile.DisplayName,
+		"avatar_url":   profile.AvatarURL,
+	})
 }

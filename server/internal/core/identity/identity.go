@@ -11,6 +11,14 @@ type Principal struct {
 	Username string
 }
 
+// Profile is the HTTP-facing account profile shape used by the current /api/me route.
+type Profile struct {
+	UserID      UserID
+	Username    string
+	DisplayName string
+	AvatarURL   string
+}
+
 // PasswordCredential represents the current username/password auth mechanism.
 type PasswordCredential struct {
 	Username string

@@ -22,7 +22,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
 	inviteHandler := &InviteHandler{Contacts: wiring.Contacts}
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
-	meHandler := &MeHandler{Store: dataStore}
+	meHandler := &MeHandler{Identity: wiring.Identity}
 
 	mux.HandleFunc("/api/register", authHandler.Register)
 	mux.Handle("/api/login", loginLimiter(auth.Login(dataStore)))
