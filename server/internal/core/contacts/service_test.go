@@ -46,7 +46,7 @@ func (f *fakeGraphRepo) UpdateInvite(ctx context.Context, inviteID int, userID U
 
 func TestCoreService_ListContacts_DelegatesToRepository(t *testing.T) {
 	repo := &fakeGraphRepo{contacts: []Contact{{UserID: 2, Username: "bob"}}}
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 
 	got, err := svc.ListContacts(context.Background(), 1)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestCoreService_ListContacts_DelegatesToRepository(t *testing.T) {
 
 func TestCoreService_SendInvite_DelegatesToRepository(t *testing.T) {
 	repo := &fakeGraphRepo{}
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 
 	if err := svc.SendInvite(context.Background(), 1, 2); err != nil {
 		t.Fatalf("SendInvite returned error: %v", err)
@@ -74,7 +74,7 @@ func TestCoreService_SendInvite_DelegatesToRepository(t *testing.T) {
 
 func TestCoreService_RespondToInvite_PropagatesErrors(t *testing.T) {
 	repo := &fakeGraphRepo{err: errors.New("db down")}
-	svc := NewService(repo)
+	svc := NewService(repo, nil)
 
 	err := svc.RespondToInvite(context.Background(), 9, 1, InviteAccepted)
 	if err == nil || err.Error() != "db down" {
@@ -82,5 +82,44 @@ func TestCoreService_RespondToInvite_PropagatesErrors(t *testing.T) {
 	}
 	if repo.lastInviteID != 9 || repo.lastUserID != 1 || repo.lastStatus != InviteAccepted {
 		t.Fatalf("unexpected update call inviteID=%d userID=%d status=%q", repo.lastInviteID, repo.lastUserID, repo.lastStatus)
+	}
+}
+
+type fakeUserDirectory struct {
+	userID UserID
+	err    error
+	last   string
+}
+
+func (f *fakeUserDirectory) ResolveUserIDByUsername(ctx context.Context, username string) (UserID, error) {
+	_ = ctx
+	f.last = username
+	return f.userID, f.err
+}
+
+func TestCoreService_SendInviteByUsername_ResolvesUserAndCreatesInvite(t *testing.T) {
+	repo := &fakeGraphRepo{}
+	dir := &fakeUserDirectory{userID: 22}
+	svc := NewService(repo, dir)
+
+	if err := svc.SendInviteByUsername(context.Background(), 11, "bob"); err != nil {
+		t.Fatalf("SendInviteByUsername returned error: %v", err)
+	}
+	if dir.last != "bob" {
+		t.Fatalf("directory lookup username = %q, want bob", dir.last)
+	}
+	if repo.lastFrom != 11 || repo.lastTo != 22 {
+		t.Fatalf("unexpected repo invite call from=%d to=%d", repo.lastFrom, repo.lastTo)
+	}
+}
+
+func TestCoreService_SendInviteByUsername_ReturnsUserNotFound(t *testing.T) {
+	repo := &fakeGraphRepo{}
+	dir := &fakeUserDirectory{err: errors.New("not found")}
+	svc := NewService(repo, dir)
+
+	err := svc.SendInviteByUsername(context.Background(), 11, "missing")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound, got %v", err)
 	}
 }

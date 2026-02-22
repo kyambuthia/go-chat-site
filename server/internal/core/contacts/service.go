@@ -1,20 +1,30 @@
 package contacts
 
-import "context"
+import (
+	"context"
+	"errors"
+	"strings"
+)
 
 type Service interface {
 	ListContacts(ctx context.Context, userID UserID) ([]Contact, error)
 	SendInvite(ctx context.Context, fromUser, toUser UserID) error
+	SendInviteByUsername(ctx context.Context, fromUser UserID, username string) error
 	ListInvites(ctx context.Context, userID UserID) ([]Invite, error)
 	RespondToInvite(ctx context.Context, inviteID int, userID UserID, status InviteStatus) error
 }
 
 type CoreService struct {
-	repo GraphRepository
+	repo  GraphRepository
+	users UserDirectory
 }
 
-func NewService(repo GraphRepository) *CoreService {
-	return &CoreService{repo: repo}
+type UserDirectory interface {
+	ResolveUserIDByUsername(ctx context.Context, username string) (UserID, error)
+}
+
+func NewService(repo GraphRepository, users UserDirectory) *CoreService {
+	return &CoreService{repo: repo, users: users}
 }
 
 func (s *CoreService) ListContacts(ctx context.Context, userID UserID) ([]Contact, error) {
@@ -25,10 +35,31 @@ func (s *CoreService) SendInvite(ctx context.Context, fromUser, toUser UserID) e
 	return s.repo.CreateInvite(ctx, fromUser, toUser)
 }
 
+func (s *CoreService) SendInviteByUsername(ctx context.Context, fromUser UserID, username string) error {
+	if s.users == nil {
+		return ErrUserNotFound
+	}
+	toUser, err := s.users.ResolveUserIDByUsername(ctx, strings.TrimSpace(username))
+	if err != nil {
+		return ErrUserNotFound
+	}
+	if err := s.repo.CreateInvite(ctx, fromUser, toUser); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *CoreService) ListInvites(ctx context.Context, userID UserID) ([]Invite, error) {
 	return s.repo.ListInvites(ctx, userID)
 }
 
 func (s *CoreService) RespondToInvite(ctx context.Context, inviteID int, userID UserID, status InviteStatus) error {
-	return s.repo.UpdateInvite(ctx, inviteID, userID, status)
+	err := s.repo.UpdateInvite(ctx, inviteID, userID, status)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrInviteNotFound) {
+		return ErrInviteNotFound
+	}
+	return err
 }

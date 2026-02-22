@@ -6,12 +6,14 @@ import (
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type InviteHandler struct {
-	Store store.InviteStore
+	Contacts corecontacts.Service
+	Store    store.InviteStore
 }
 
 func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
@@ -35,13 +37,11 @@ func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Store.GetUserByUsername(req.Username)
-	if err != nil {
-		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
-		return
-	}
-
-	if err := h.Store.CreateInvite(inviterID, user.ID); err != nil {
+	if err := h.Contacts.SendInviteByUsername(r.Context(), corecontacts.UserID(inviterID), req.Username); err != nil {
+		if errors.Is(err, corecontacts.ErrUserNotFound) {
+			web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
+			return
+		}
 		if errors.Is(err, store.ErrInviteExists) {
 			web.JSONError(w, err, http.StatusConflict)
 			return
@@ -65,14 +65,22 @@ func (h *InviteHandler) GetInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invites, err := h.Store.ListInvites(userID)
+	invites, err := h.Contacts.ListInvites(r.Context(), corecontacts.UserID(userID))
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
+	resp := make([]map[string]any, 0, len(invites))
+	for _, inv := range invites {
+		resp = append(resp, map[string]any{
+			"id":               inv.ID,
+			"inviter_username": inv.InviterUsername,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(invites)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (h *InviteHandler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
@@ -104,8 +112,8 @@ func (h *InviteHandler) updateInviteStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.Store.UpdateInviteStatus(req.InviteID, userID, status); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
+	if err := h.Contacts.RespondToInvite(r.Context(), req.InviteID, corecontacts.UserID(userID), corecontacts.InviteStatus(status)); err != nil {
+		if errors.Is(err, corecontacts.ErrInviteNotFound) || errors.Is(err, store.ErrNotFound) {
 			web.JSONError(w, errors.New("invite not found"), http.StatusNotFound)
 			return
 		}

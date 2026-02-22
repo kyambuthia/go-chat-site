@@ -6,12 +6,14 @@ import (
 	"net/http"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type ContactsHandler struct {
-	Store store.ContactsStore
+	Contacts corecontacts.Service
+	Store    store.ContactsStore
 }
 
 func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
@@ -26,14 +28,24 @@ func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contacts, err := h.Store.ListContacts(userID)
+	contacts, err := h.Contacts.ListContacts(r.Context(), corecontacts.UserID(userID))
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
+	resp := make([]map[string]any, 0, len(contacts))
+	for _, c := range contacts {
+		resp = append(resp, map[string]any{
+			"id":           int(c.UserID),
+			"username":     c.Username,
+			"display_name": c.DisplayName,
+			"avatar_url":   c.AvatarURL,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(contacts)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (h *ContactsHandler) AddContact(w http.ResponseWriter, r *http.Request) {

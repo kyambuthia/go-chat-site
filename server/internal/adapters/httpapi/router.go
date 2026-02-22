@@ -4,10 +4,12 @@ import (
 	"net/http"
 	"time"
 
+	sqlitecontacts "github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqlitecontacts"
 	sqliteledger "github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/config"
+	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
 	coreledger "github.com/kyambuthia/go-chat-site/server/internal/core/ledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 )
@@ -19,8 +21,10 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	wsHandshakeLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
 
 	authHandler := &AuthHandler{Store: dataStore}
-	contactsHandler := &ContactsHandler{Store: dataStore}
-	inviteHandler := &InviteHandler{Store: dataStore}
+	contactsAdapter := &sqlitecontacts.Adapter{Store: dataStore}
+	contactsService := corecontacts.NewService(contactsAdapter, contactsAdapter)
+	contactsHandler := &ContactsHandler{Contacts: contactsService, Store: dataStore}
+	inviteHandler := &InviteHandler{Contacts: contactsService, Store: dataStore}
 	ledgerAdapter := &sqliteledger.Adapter{WalletStore: dataStore}
 	ledgerService := coreledger.NewService(ledgerAdapter, ledgerAdapter)
 	walletHandler := &WalletHandler{Ledger: ledgerService}
