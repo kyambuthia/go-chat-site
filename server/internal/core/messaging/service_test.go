@@ -68,6 +68,17 @@ type fakePersistenceService struct {
 	lastMarkID   int64
 }
 
+type fakeCorrelationRecorder struct {
+	last ClientMessageCorrelation
+	err  error
+}
+
+func (f *fakeCorrelationRecorder) RecordClientMessageCorrelation(ctx context.Context, c ClientMessageCorrelation) error {
+	_ = ctx
+	f.last = c
+	return f.err
+}
+
 func (f *fakePersistenceService) StoreDirectMessage(ctx context.Context, req PersistDirectMessageRequest) (StoredMessage, error) {
 	_ = ctx
 	f.lastStoreReq = req
@@ -264,5 +275,57 @@ func TestDurableRelayService_SendDirect_PersistsButDoesNotMarkDeliveredWhenOffli
 	}
 	if ps.lastMarkID != 0 {
 		t.Fatalf("expected no MarkDelivered call, got %d", ps.lastMarkID)
+	}
+}
+
+func TestDurableRelayService_SendDirect_RecordsClientCorrelation(t *testing.T) {
+	tp := &fakeTransport{ok: true}
+	ps := &fakePersistenceService{stored: StoredMessage{ID: 777}}
+	cr := &fakeCorrelationRecorder{}
+	svc := NewDurableRelayServiceWithCorrelation(tp, ps, cr)
+
+	receipt, err := svc.SendDirect(context.Background(), DirectSendRequest{
+		FromUserID: 1,
+		ToUserID:   2,
+		Body:       "hello",
+		MessageID:  55,
+	})
+	if err != nil {
+		t.Fatalf("SendDirect returned error: %v", err)
+	}
+	if !receipt.Delivered {
+		t.Fatalf("expected delivered receipt, got %+v", receipt)
+	}
+	if cr.last.SenderUserID != 1 || cr.last.RecipientUserID != 2 || cr.last.ClientMessageID != 55 || cr.last.StoredMessageID != 777 {
+		t.Fatalf("unexpected correlation record: %+v", cr.last)
+	}
+	if !cr.last.Delivered {
+		t.Fatalf("expected delivered=true in correlation: %+v", cr.last)
+	}
+}
+
+func TestDurableRelayService_SendDirect_RecordsOfflineCorrelation(t *testing.T) {
+	tp := &fakeTransport{ok: false}
+	ps := &fakePersistenceService{stored: StoredMessage{ID: 778}}
+	cr := &fakeCorrelationRecorder{}
+	svc := NewDurableRelayServiceWithCorrelation(tp, ps, cr)
+
+	receipt, err := svc.SendDirect(context.Background(), DirectSendRequest{
+		FromUserID: 1,
+		ToUserID:   2,
+		Body:       "hello",
+		MessageID:  56,
+	})
+	if err != nil {
+		t.Fatalf("SendDirect returned error: %v", err)
+	}
+	if receipt.Delivered {
+		t.Fatalf("expected offline receipt, got %+v", receipt)
+	}
+	if cr.last.ClientMessageID != 56 || cr.last.StoredMessageID != 778 {
+		t.Fatalf("unexpected correlation record: %+v", cr.last)
+	}
+	if cr.last.Delivered {
+		t.Fatalf("expected delivered=false in correlation: %+v", cr.last)
 	}
 }

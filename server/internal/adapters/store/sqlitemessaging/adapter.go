@@ -14,6 +14,24 @@ type Adapter struct {
 }
 
 var _ coremsg.MessageRepository = (*Adapter)(nil)
+var _ coremsg.ClientMessageCorrelationRecorder = (*Adapter)(nil)
+
+func (a *Adapter) RecordClientMessageCorrelation(ctx context.Context, c coremsg.ClientMessageCorrelation) error {
+	delivered := 0
+	if c.Delivered {
+		delivered = 1
+	}
+	_, err := a.DB.ExecContext(ctx, `
+		INSERT INTO message_client_correlations (
+			sender_user_id, recipient_user_id, client_message_id, stored_message_id, delivered
+		) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(sender_user_id, client_message_id) DO UPDATE SET
+			recipient_user_id = excluded.recipient_user_id,
+			stored_message_id = excluded.stored_message_id,
+			delivered = excluded.delivered
+	`, c.SenderUserID, c.RecipientUserID, c.ClientMessageID, c.StoredMessageID, delivered)
+	return err
+}
 
 func (a *Adapter) SaveDirectMessage(ctx context.Context, msg coremsg.StoredMessage) (coremsg.StoredMessage, error) {
 	result, err := a.DB.ExecContext(ctx, `

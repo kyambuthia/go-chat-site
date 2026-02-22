@@ -25,6 +25,7 @@ type Wiring struct {
 	Identity             coreid.ProfileService
 	Ledger               coreledger.Service
 	MessagingPersistence coremsg.PersistenceService
+	MessagingCorrelation coremsg.ClientMessageCorrelationRecorder
 }
 
 func NewWiring(dataStore store.APIStore) *Wiring {
@@ -36,6 +37,14 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 	if dbProvider, ok := dataStore.(interface{ SQLDB() *sql.DB }); ok && dbProvider.SQLDB() != nil {
 		messagingAdapter := &sqlitemessaging.Adapter{DB: dbProvider.SQLDB()}
 		messagingPersistence = coremsg.NewPersistenceService(messagingAdapter)
+		return &Wiring{
+			Contacts:             corecontacts.NewService(contactsAdapter, contactsAdapter),
+			Auth:                 coreid.NewAuthService(authAdapter, passwordbcrypt.Verifier{}, &jwttokens.Adapter{}),
+			Identity:             coreid.NewProfileService(identityAdapter),
+			Ledger:               coreledger.NewService(ledgerAdapter, ledgerAdapter),
+			MessagingPersistence: messagingPersistence,
+			MessagingCorrelation: messagingAdapter,
+		}
 	}
 
 	return &Wiring{

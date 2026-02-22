@@ -42,12 +42,21 @@ func (s *RelayService) SendDirect(ctx context.Context, req DirectSendRequest) (D
 type DurableRelayService struct {
 	transport   Transport
 	persistence PersistenceService
+	correlation ClientMessageCorrelationRecorder
 }
 
 func NewDurableRelayService(transport Transport, persistence PersistenceService) *DurableRelayService {
 	return &DurableRelayService{
 		transport:   transport,
 		persistence: persistence,
+	}
+}
+
+func NewDurableRelayServiceWithCorrelation(transport Transport, persistence PersistenceService, correlation ClientMessageCorrelationRecorder) *DurableRelayService {
+	return &DurableRelayService{
+		transport:   transport,
+		persistence: persistence,
+		correlation: correlation,
 	}
 }
 
@@ -70,6 +79,17 @@ func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequ
 		From: req.From,
 		Body: req.Body,
 	})
+	if s.correlation != nil && req.MessageID != 0 && storedID != 0 {
+		if err := s.correlation.RecordClientMessageCorrelation(ctx, ClientMessageCorrelation{
+			SenderUserID:    req.FromUserID,
+			RecipientUserID: req.ToUserID,
+			ClientMessageID: req.MessageID,
+			StoredMessageID: storedID,
+			Delivered:       ok,
+		}); err != nil {
+			return DeliveryReceipt{}, err
+		}
+	}
 	if !ok {
 		return DeliveryReceipt{
 			MessageID:       req.MessageID,

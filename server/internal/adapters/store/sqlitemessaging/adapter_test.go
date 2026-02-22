@@ -313,3 +313,66 @@ func TestAdapter_ListUnreadInbox_FiltersReadMessages(t *testing.T) {
 		t.Fatalf("expected unread message to have nil read_at, got %+v", inbox[0])
 	}
 }
+
+func TestAdapter_RecordClientMessageCorrelation_UpsertsBySenderAndClientMessageID(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+	msg1, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "first",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage first: %v", err)
+	}
+	msg2, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "second",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage second: %v", err)
+	}
+
+	if err := a.RecordClientMessageCorrelation(context.Background(), coremsg.ClientMessageCorrelation{
+		SenderUserID:    aliceID,
+		RecipientUserID: bobID,
+		ClientMessageID: 12345,
+		StoredMessageID: msg1.ID,
+		Delivered:       false,
+	}); err != nil {
+		t.Fatalf("RecordClientMessageCorrelation insert: %v", err)
+	}
+
+	if err := a.RecordClientMessageCorrelation(context.Background(), coremsg.ClientMessageCorrelation{
+		SenderUserID:    aliceID,
+		RecipientUserID: bobID,
+		ClientMessageID: 12345,
+		StoredMessageID: msg2.ID,
+		Delivered:       true,
+	}); err != nil {
+		t.Fatalf("RecordClientMessageCorrelation upsert: %v", err)
+	}
+
+	var senderID, recipientID int
+	var clientMsgID, storedMsgID int64
+	var deliveredInt int
+	if err := s.DB.QueryRow(`
+		SELECT sender_user_id, recipient_user_id, client_message_id, stored_message_id, delivered
+		FROM message_client_correlations
+		WHERE sender_user_id = ? AND client_message_id = ?
+	`, aliceID, 12345).Scan(&senderID, &recipientID, &clientMsgID, &storedMsgID, &deliveredInt); err != nil {
+		t.Fatalf("query correlation row: %v", err)
+	}
+	if senderID != aliceID || recipientID != bobID {
+		t.Fatalf("unexpected sender/recipient ids: %d/%d", senderID, recipientID)
+	}
+	if clientMsgID != 12345 || storedMsgID != msg2.ID {
+		t.Fatalf("unexpected ids client=%d stored=%d want stored=%d", clientMsgID, storedMsgID, msg2.ID)
+	}
+	if deliveredInt != 1 {
+		t.Fatalf("delivered = %d, want 1", deliveredInt)
+	}
+}

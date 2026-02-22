@@ -18,7 +18,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	loginLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.LoginRateLimitPerMinute(), time.Minute))
 	wsHandshakeLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
 	wiring := app.NewWiring(dataStore)
-	hub.SetDeliveryService(coremsg.NewDurableRelayService(hub, wiring.MessagingPersistence))
+	hub.SetDeliveryService(coremsg.NewDurableRelayServiceWithCorrelation(hub, wiring.MessagingPersistence, wiring.MessagingCorrelation))
 
 	authHandler := &AuthHandler{Identity: wiring.Auth}
 	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
