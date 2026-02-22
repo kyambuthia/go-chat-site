@@ -1,3 +1,4 @@
+// Package ws is a compatibility shim over the wsrelay transport adapter.
 package ws
 
 import (

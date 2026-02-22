@@ -11,6 +11,8 @@ import (
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
+// Login is a legacy compatibility handler retained during the adapter refactor.
+// Deprecated: prefer server/internal/adapters/httpapi.AuthHandler with core identity services.
 func Login(authStore store.LoginStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
