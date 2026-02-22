@@ -389,3 +389,95 @@ func TestMeAndWalletRoutes_Compatibility(t *testing.T) {
 		}
 	})
 }
+
+func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(bobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Seed durable messages + receipt metadata using the existing schema.
+	res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?), (?, ?, ?)`,
+		aliceID, bobID, "hello", aliceID, bobID, "second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstID := lastID - 1
+	if _, err := s.DB.Exec(`INSERT INTO message_deliveries (message_id, delivered_at) VALUES (?, CURRENT_TIMESTAMP)`, firstID); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := ws.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	t.Run("unauthorized without token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox", nil)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want 401", rr.Code)
+		}
+	})
+
+	t.Run("returns inbox messages in descending order", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?limit=10", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if len(resp) != 2 {
+			t.Fatalf("expected 2 messages, got %d", len(resp))
+		}
+		if got := int64(resp[0]["id"].(float64)); got != lastID {
+			t.Fatalf("first id = %d, want %d", got, lastID)
+		}
+		if got := resp[0]["body"].(string); got != "second" {
+			t.Fatalf("first body = %q, want second", got)
+		}
+		if got := int(resp[0]["to_user_id"].(float64)); got != bobID {
+			t.Fatalf("to_user_id = %d, want %d", got, bobID)
+		}
+		if _, ok := resp[0]["created_at"]; !ok {
+			t.Fatal("expected created_at field")
+		}
+		if _, ok := resp[1]["delivered_at"]; !ok {
+			t.Fatal("expected delivered_at field")
+		}
+	})
+}

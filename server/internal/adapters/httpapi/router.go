@@ -24,6 +24,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
 	inviteHandler := &InviteHandler{Contacts: wiring.Contacts}
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
+	messagesHandler := &MessagesHandler{Messaging: wiring.MessagingPersistence}
 	meHandler := &MeHandler{Identity: wiring.Identity}
 
 	mux.HandleFunc("/api/register", authHandler.Register)
@@ -39,6 +40,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(meHandler.GetMe)))
 	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
+	mux.Handle("/api/messages/inbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetInbox)))
 
 	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, app.WSAuthenticator(dataStore), app.WSResolveUserID(dataStore))))
 
