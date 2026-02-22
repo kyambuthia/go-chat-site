@@ -8,6 +8,8 @@ import (
 
 type Service interface {
 	ListContacts(ctx context.Context, userID UserID) ([]Contact, error)
+	AddContactByUsername(ctx context.Context, userID UserID, username string) error
+	RemoveContact(ctx context.Context, userID, contactID UserID) error
 	SendInvite(ctx context.Context, fromUser, toUser UserID) error
 	SendInviteByUsername(ctx context.Context, fromUser UserID, username string) error
 	ListInvites(ctx context.Context, userID UserID) ([]Invite, error)
@@ -33,6 +35,21 @@ func (s *CoreService) ListContacts(ctx context.Context, userID UserID) ([]Contac
 
 func (s *CoreService) SendInvite(ctx context.Context, fromUser, toUser UserID) error {
 	return s.repo.CreateInvite(ctx, fromUser, toUser)
+}
+
+func (s *CoreService) AddContactByUsername(ctx context.Context, userID UserID, username string) error {
+	if s.users == nil {
+		return ErrUserNotFound
+	}
+	contactID, err := s.users.ResolveUserIDByUsername(ctx, strings.TrimSpace(username))
+	if err != nil {
+		return ErrUserNotFound
+	}
+	return s.repo.AddContact(ctx, userID, contactID)
+}
+
+func (s *CoreService) RemoveContact(ctx context.Context, userID, contactID UserID) error {
+	return s.repo.RemoveContact(ctx, userID, contactID)
 }
 
 func (s *CoreService) SendInviteByUsername(ctx context.Context, fromUser UserID, username string) error {

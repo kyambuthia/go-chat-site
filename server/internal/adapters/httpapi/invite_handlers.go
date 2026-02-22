@@ -13,7 +13,6 @@ import (
 
 type InviteHandler struct {
 	Contacts corecontacts.Service
-	Store    store.InviteStore
 }
 
 func (h *InviteHandler) SendInvite(w http.ResponseWriter, r *http.Request) {

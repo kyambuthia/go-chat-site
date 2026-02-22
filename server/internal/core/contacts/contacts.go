@@ -38,6 +38,8 @@ var (
 // GraphRepository abstracts contact graph persistence.
 type GraphRepository interface {
 	ListContacts(ctx context.Context, userID UserID) ([]Contact, error)
+	AddContact(ctx context.Context, userID, contactID UserID) error
+	RemoveContact(ctx context.Context, userID, contactID UserID) error
 	CreateInvite(ctx context.Context, fromUser, toUser UserID) error
 	ListInvites(ctx context.Context, userID UserID) ([]Invite, error)
 	UpdateInvite(ctx context.Context, inviteID int, userID UserID, status InviteStatus) error

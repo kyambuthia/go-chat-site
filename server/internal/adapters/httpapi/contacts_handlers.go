@@ -7,13 +7,11 @@ import (
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
-	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type ContactsHandler struct {
 	Contacts corecontacts.Service
-	Store    store.ContactsStore
 }
 
 func (h *ContactsHandler) GetContacts(w http.ResponseWriter, r *http.Request) {
@@ -69,13 +67,11 @@ func (h *ContactsHandler) AddContact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Store.GetUserByUsername(req.Username)
-	if err != nil {
-		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
-		return
-	}
-
-	if err := h.Store.AddContact(userID, user.ID); err != nil {
+	if err := h.Contacts.AddContactByUsername(r.Context(), corecontacts.UserID(userID), req.Username); err != nil {
+		if errors.Is(err, corecontacts.ErrUserNotFound) {
+			web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
+			return
+		}
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -104,7 +100,7 @@ func (h *ContactsHandler) RemoveContact(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.Store.RemoveContact(userID, req.ContactID); err != nil {
+	if err := h.Contacts.RemoveContact(r.Context(), corecontacts.UserID(userID), corecontacts.UserID(req.ContactID)); err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}

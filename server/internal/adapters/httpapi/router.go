@@ -19,8 +19,8 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	wiring := app.NewWiring(dataStore)
 
 	authHandler := &AuthHandler{Store: dataStore}
-	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts, Store: dataStore}
-	inviteHandler := &InviteHandler{Contacts: wiring.Contacts, Store: dataStore}
+	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
+	inviteHandler := &InviteHandler{Contacts: wiring.Contacts}
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
 	meHandler := &MeHandler{Store: dataStore}
 

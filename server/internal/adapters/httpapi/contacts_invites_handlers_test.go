@@ -20,9 +20,11 @@ type fakeContactsService struct {
 	err        error
 	lastUserID corecontacts.UserID
 	lastFrom   corecontacts.UserID
+	lastTo     corecontacts.UserID
 	lastInvite int
 	lastStatus corecontacts.InviteStatus
 	lastLookup string
+	lastRemove corecontacts.UserID
 }
 
 func (f *fakeContactsService) ListContacts(ctx context.Context, userID corecontacts.UserID) ([]corecontacts.Contact, error) {
@@ -34,7 +36,21 @@ func (f *fakeContactsService) ListContacts(ctx context.Context, userID coreconta
 func (f *fakeContactsService) SendInvite(ctx context.Context, fromUser, toUser corecontacts.UserID) error {
 	_ = ctx
 	f.lastFrom = fromUser
-	f.lastUserID = toUser
+	f.lastTo = toUser
+	return f.err
+}
+
+func (f *fakeContactsService) AddContactByUsername(ctx context.Context, userID corecontacts.UserID, username string) error {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastLookup = username
+	return f.err
+}
+
+func (f *fakeContactsService) RemoveContact(ctx context.Context, userID, contactID corecontacts.UserID) error {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastRemove = contactID
 	return f.err
 }
 
@@ -99,6 +115,50 @@ func TestContactsHandler_GetContacts_UsesCoreServiceAndPreservesResponseShape(t 
 	}
 	if got := resp[0]["display_name"].(string); got != "Bob" {
 		t.Fatalf("display_name = %q, want Bob", got)
+	}
+}
+
+func TestContactsHandler_AddContact_UsesCoreServiceAndMapsErrors(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		svc := &fakeContactsService{}
+		h := &ContactsHandler{Contacts: svc}
+
+		rr := httptest.NewRecorder()
+		h.AddContact(rr, authedJSONReq(t, http.MethodPost, "/api/contacts", []byte(`{"username":"bob"}`), 1))
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want 201", rr.Code)
+		}
+		if svc.lastUserID != 1 || svc.lastLookup != "bob" {
+			t.Fatalf("unexpected AddContactByUsername call user=%d username=%q", svc.lastUserID, svc.lastLookup)
+		}
+	})
+
+	t.Run("user not found", func(t *testing.T) {
+		svc := &fakeContactsService{err: corecontacts.ErrUserNotFound}
+		h := &ContactsHandler{Contacts: svc}
+
+		rr := httptest.NewRecorder()
+		h.AddContact(rr, authedJSONReq(t, http.MethodPost, "/api/contacts", []byte(`{"username":"missing"}`), 1))
+
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rr.Code)
+		}
+	})
+}
+
+func TestContactsHandler_RemoveContact_UsesCoreService(t *testing.T) {
+	svc := &fakeContactsService{}
+	h := &ContactsHandler{Contacts: svc}
+
+	rr := httptest.NewRecorder()
+	h.RemoveContact(rr, authedJSONReq(t, http.MethodDelete, "/api/contacts", []byte(`{"contact_id":9}`), 1))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if svc.lastUserID != 1 || svc.lastRemove != 9 {
+		t.Fatalf("unexpected RemoveContact call user=%d contact=%d", svc.lastUserID, svc.lastRemove)
 	}
 }
 

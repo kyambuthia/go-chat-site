@@ -30,6 +30,20 @@ func (f *fakeGraphRepo) CreateInvite(ctx context.Context, fromUser, toUser UserI
 	return f.err
 }
 
+func (f *fakeGraphRepo) AddContact(ctx context.Context, userID, contactID UserID) error {
+	_ = ctx
+	f.lastFrom = userID
+	f.lastTo = contactID
+	return f.err
+}
+
+func (f *fakeGraphRepo) RemoveContact(ctx context.Context, userID, contactID UserID) error {
+	_ = ctx
+	f.lastFrom = userID
+	f.lastTo = contactID
+	return f.err
+}
+
 func (f *fakeGraphRepo) ListInvites(ctx context.Context, userID UserID) ([]Invite, error) {
 	_ = ctx
 	f.lastUserID = userID
@@ -121,5 +135,33 @@ func TestCoreService_SendInviteByUsername_ReturnsUserNotFound(t *testing.T) {
 	err := svc.SendInviteByUsername(context.Background(), 11, "missing")
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestCoreService_AddContactByUsername_ResolvesAndDelegates(t *testing.T) {
+	repo := &fakeGraphRepo{}
+	dir := &fakeUserDirectory{userID: 8}
+	svc := NewService(repo, dir)
+
+	if err := svc.AddContactByUsername(context.Background(), 1, "bob"); err != nil {
+		t.Fatalf("AddContactByUsername returned error: %v", err)
+	}
+	if dir.last != "bob" {
+		t.Fatalf("directory lookup username = %q, want bob", dir.last)
+	}
+	if repo.lastFrom != 1 || repo.lastTo != 8 {
+		t.Fatalf("unexpected AddContact repo call user=%d contact=%d", repo.lastFrom, repo.lastTo)
+	}
+}
+
+func TestCoreService_RemoveContact_Delegates(t *testing.T) {
+	repo := &fakeGraphRepo{}
+	svc := NewService(repo, nil)
+
+	if err := svc.RemoveContact(context.Background(), 1, 9); err != nil {
+		t.Fatalf("RemoveContact returned error: %v", err)
+	}
+	if repo.lastFrom != 1 || repo.lastTo != 9 {
+		t.Fatalf("unexpected RemoveContact repo call user=%d contact=%d", repo.lastFrom, repo.lastTo)
 	}
 }

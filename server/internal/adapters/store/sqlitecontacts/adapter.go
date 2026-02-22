@@ -44,6 +44,16 @@ func (a *Adapter) CreateInvite(ctx context.Context, fromUser, toUser corecontact
 	return a.Store.CreateInvite(int(fromUser), int(toUser))
 }
 
+func (a *Adapter) AddContact(ctx context.Context, userID, contactID corecontacts.UserID) error {
+	_ = ctx
+	return a.Store.AddContact(int(userID), int(contactID))
+}
+
+func (a *Adapter) RemoveContact(ctx context.Context, userID, contactID corecontacts.UserID) error {
+	_ = ctx
+	return a.Store.RemoveContact(int(userID), int(contactID))
+}
+
 func (a *Adapter) ListInvites(ctx context.Context, userID corecontacts.UserID) ([]corecontacts.Invite, error) {
 	_ = ctx
 	rows, err := a.Store.ListInvites(int(userID))
