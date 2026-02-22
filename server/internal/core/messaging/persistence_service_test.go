@@ -94,6 +94,16 @@ func (f *fakePersistenceRepo) ListInboxAfter(ctx context.Context, userID int, af
 	return f.listResp, f.listErr
 }
 
+func (f *fakePersistenceRepo) GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error) {
+	_ = ctx
+	_ = recipientUserID
+	_ = messageID
+	if len(f.listResp) > 0 {
+		return f.listResp[0], nil
+	}
+	return StoredMessage{}, nil
+}
+
 func TestPersistenceService_StoreDirectMessage_DelegatesAndSetsDefaults(t *testing.T) {
 	repo := &fakePersistenceRepo{}
 	svc := NewPersistenceService(repo)

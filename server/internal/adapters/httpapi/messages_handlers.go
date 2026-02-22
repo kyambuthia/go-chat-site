@@ -12,7 +12,8 @@ import (
 )
 
 type MessagesHandler struct {
-	Messaging coremsg.PersistenceService
+	Messaging        coremsg.PersistenceService
+	ReceiptTransport coremsg.Transport
 }
 
 func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +130,16 @@ func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	msg, err := h.Messaging.GetMessageForRecipient(r.Context(), userID, req.MessageID)
+	if err != nil {
+		if errors.Is(err, coremsg.ErrMessageNotFound) {
+			web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
+			return
+		}
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+
 	if err := h.Messaging.MarkReadForRecipient(r.Context(), userID, req.MessageID); err != nil {
 		if errors.Is(err, coremsg.ErrMessageNotFound) {
 			web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
@@ -137,6 +148,7 @@ func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
+	h.tryPushReceipt(msg.FromUserID, coremsg.KindMessageRead, req.MessageID)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -169,6 +181,16 @@ func (h *MessagesHandler) MarkDelivered(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	msg, err := h.Messaging.GetMessageForRecipient(r.Context(), userID, req.MessageID)
+	if err != nil {
+		if errors.Is(err, coremsg.ErrMessageNotFound) {
+			web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
+			return
+		}
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+
 	if err := h.Messaging.MarkDeliveredForRecipient(r.Context(), userID, req.MessageID); err != nil {
 		if errors.Is(err, coremsg.ErrMessageNotFound) {
 			web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
@@ -177,5 +199,16 @@ func (h *MessagesHandler) MarkDelivered(w http.ResponseWriter, r *http.Request) 
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
+	h.tryPushReceipt(msg.FromUserID, coremsg.KindMessageDelivered, req.MessageID)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (h *MessagesHandler) tryPushReceipt(senderUserID int, kind coremsg.MessageKind, messageID int64) {
+	if h.ReceiptTransport == nil || senderUserID <= 0 {
+		return
+	}
+	_ = h.ReceiptTransport.SendDirect(senderUserID, coremsg.Message{
+		Type: kind,
+		ID:   messageID,
+	})
 }

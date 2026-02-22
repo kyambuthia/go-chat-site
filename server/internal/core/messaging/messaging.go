@@ -13,11 +13,13 @@ type MessageKind string
 var ErrMessageNotFound = errors.New("message not found")
 
 const (
-	KindDirectMessage MessageKind = "direct_message"
-	KindMessageAck    MessageKind = "message_ack"
-	KindUserOnline    MessageKind = "user_online"
-	KindUserOffline   MessageKind = "user_offline"
-	KindError         MessageKind = "error"
+	KindDirectMessage    MessageKind = "direct_message"
+	KindMessageAck       MessageKind = "message_ack"
+	KindMessageDelivered MessageKind = "message_delivered"
+	KindMessageRead      MessageKind = "message_read"
+	KindUserOnline       MessageKind = "user_online"
+	KindUserOffline      MessageKind = "user_offline"
+	KindError            MessageKind = "error"
 )
 
 // Message is the normalized real-time payload envelope for the messaging domain.

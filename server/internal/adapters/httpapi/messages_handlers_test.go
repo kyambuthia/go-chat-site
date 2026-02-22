@@ -15,18 +15,22 @@ import (
 )
 
 type fakeMessagingPersistence struct {
-	listResp        []coremsg.StoredMessage
-	listErr         error
-	lastUserID      int
-	lastLimit       int
-	lastBeforeID    int64
-	listBeforeErr   error
-	lastAfterID     int64
-	listAfterErr    error
-	lastDeliveredID int64
-	deliveredErr    error
-	lastReadID      int64
-	readErr         error
+	listResp         []coremsg.StoredMessage
+	listErr          error
+	lastUserID       int
+	lastLimit        int
+	lastBeforeID     int64
+	listBeforeErr    error
+	lastAfterID      int64
+	listAfterErr     error
+	lastDeliveredID  int64
+	deliveredErr     error
+	lastReadID       int64
+	readErr          error
+	getMsgResp       coremsg.StoredMessage
+	getMsgErr        error
+	lastGetMsgUserID int
+	lastGetMsgID     int64
 }
 
 func (f *fakeMessagingPersistence) StoreDirectMessage(ctx context.Context, req coremsg.PersistDirectMessageRequest) (coremsg.StoredMessage, error) {
@@ -61,6 +65,16 @@ func (f *fakeMessagingPersistence) MarkReadForRecipient(ctx context.Context, rec
 	return f.readErr
 }
 
+func (f *fakeMessagingPersistence) GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastGetMsgUserID = recipientUserID
+	f.lastGetMsgID = messageID
+	if f.getMsgErr != nil {
+		return coremsg.StoredMessage{}, f.getMsgErr
+	}
+	return f.getMsgResp, nil
+}
+
 func (f *fakeMessagingPersistence) ListInbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
@@ -82,6 +96,18 @@ func (f *fakeMessagingPersistence) ListInboxAfter(ctx context.Context, userID in
 	f.lastAfterID = afterID
 	f.lastLimit = limit
 	return f.listResp, f.listAfterErr
+}
+
+type fakeTransport struct {
+	ok      bool
+	lastTo  int
+	lastMsg coremsg.Message
+}
+
+func (f *fakeTransport) SendDirect(toUserID int, msg coremsg.Message) bool {
+	f.lastTo = toUserID
+	f.lastMsg = msg
+	return f.ok
 }
 
 func TestMessagesHandler_GetInbox_UsesPersistenceServiceAndSupportsLimit(t *testing.T) {
@@ -227,8 +253,9 @@ func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 
 func TestMessagesHandler_MarkRead_ValidatesAndDelegates(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		svc := &fakeMessagingPersistence{}
-		h := &MessagesHandler{Messaging: svc}
+		svc := &fakeMessagingPersistence{getMsgResp: coremsg.StoredMessage{ID: 42, FromUserID: 7, ToUserID: 2}}
+		tp := &fakeTransport{ok: true}
+		h := &MessagesHandler{Messaging: svc, ReceiptTransport: tp}
 
 		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":42}`)))
 		req.Header.Set("Content-Type", "application/json")
@@ -241,6 +268,12 @@ func TestMessagesHandler_MarkRead_ValidatesAndDelegates(t *testing.T) {
 		}
 		if svc.lastReadID != 42 {
 			t.Fatalf("lastReadID = %d, want 42", svc.lastReadID)
+		}
+		if svc.lastGetMsgUserID != 2 || svc.lastGetMsgID != 42 {
+			t.Fatalf("unexpected GetMessageForRecipient call user=%d msg=%d", svc.lastGetMsgUserID, svc.lastGetMsgID)
+		}
+		if tp.lastTo != 7 || tp.lastMsg.Type != coremsg.KindMessageRead || tp.lastMsg.ID != 42 {
+			t.Fatalf("unexpected receipt push to=%d msg=%+v", tp.lastTo, tp.lastMsg)
 		}
 	})
 
@@ -295,12 +328,27 @@ func TestMessagesHandler_MarkRead_ValidatesAndDelegates(t *testing.T) {
 			t.Fatalf("status = %d, want 404", rr.Code)
 		}
 	})
+
+	t.Run("offline sender does not fail request", func(t *testing.T) {
+		svc := &fakeMessagingPersistence{getMsgResp: coremsg.StoredMessage{ID: 42, FromUserID: 7, ToUserID: 2}}
+		h := &MessagesHandler{Messaging: svc, ReceiptTransport: &fakeTransport{ok: false}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":42}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkRead(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+	})
 }
 
 func TestMessagesHandler_MarkDelivered_ValidatesAndDelegates(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
-		svc := &fakeMessagingPersistence{}
-		h := &MessagesHandler{Messaging: svc}
+		svc := &fakeMessagingPersistence{getMsgResp: coremsg.StoredMessage{ID: 43, FromUserID: 7, ToUserID: 2}}
+		tp := &fakeTransport{ok: true}
+		h := &MessagesHandler{Messaging: svc, ReceiptTransport: tp}
 
 		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":43}`)))
 		req.Header.Set("Content-Type", "application/json")
@@ -313,6 +361,12 @@ func TestMessagesHandler_MarkDelivered_ValidatesAndDelegates(t *testing.T) {
 		}
 		if svc.lastDeliveredID != 43 {
 			t.Fatalf("lastDeliveredID = %d, want 43", svc.lastDeliveredID)
+		}
+		if svc.lastGetMsgUserID != 2 || svc.lastGetMsgID != 43 {
+			t.Fatalf("unexpected GetMessageForRecipient call user=%d msg=%d", svc.lastGetMsgUserID, svc.lastGetMsgID)
+		}
+		if tp.lastTo != 7 || tp.lastMsg.Type != coremsg.KindMessageDelivered || tp.lastMsg.ID != 43 {
+			t.Fatalf("unexpected receipt push to=%d msg=%+v", tp.lastTo, tp.lastMsg)
 		}
 	})
 

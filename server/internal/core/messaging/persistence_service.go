@@ -17,6 +17,7 @@ type MessageRepository interface {
 	MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64, deliveredAt time.Time) error
 	MarkRead(ctx context.Context, messageID int64, readAt time.Time) error
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error
+	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
 	ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
@@ -28,6 +29,7 @@ type PersistenceService interface {
 	MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
 	MarkRead(ctx context.Context, messageID int64) error
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
+	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
 	ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
@@ -67,6 +69,10 @@ func (s *persistenceService) MarkDeliveredForRecipient(ctx context.Context, reci
 
 func (s *persistenceService) MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
 	return s.repo.MarkReadForRecipient(ctx, recipientUserID, messageID, s.now().UTC())
+}
+
+func (s *persistenceService) GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error) {
+	return s.repo.GetMessageForRecipient(ctx, recipientUserID, messageID)
 }
 
 func (s *persistenceService) ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {

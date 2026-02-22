@@ -108,6 +108,24 @@ func (a *Adapter) ListInboxAfter(ctx context.Context, userID int, afterID int64,
 	return out, nil
 }
 
+func (a *Adapter) GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (coremsg.StoredMessage, error) {
+	row := a.DB.QueryRowContext(ctx, `
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		       md.delivered_at, md.read_at
+		FROM messages m
+		LEFT JOIN message_deliveries md ON md.message_id = m.id
+		WHERE m.id = ? AND m.to_user_id = ?
+	`, messageID, recipientUserID)
+	msg, err := scanStoredMessage(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return coremsg.StoredMessage{}, coremsg.ErrMessageNotFound
+		}
+		return coremsg.StoredMessage{}, err
+	}
+	return msg, nil
+}
+
 func (a *Adapter) listInboxQuery(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
