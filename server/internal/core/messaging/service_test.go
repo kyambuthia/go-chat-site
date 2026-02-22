@@ -86,8 +86,22 @@ func (f *fakePersistenceService) MarkDelivered(ctx context.Context, messageID in
 	return f.markDelErr
 }
 
+func (f *fakePersistenceService) MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
+	_ = ctx
+	_ = recipientUserID
+	f.lastMarkID = messageID
+	return f.markDelErr
+}
+
 func (f *fakePersistenceService) MarkRead(ctx context.Context, messageID int64) error {
 	_ = ctx
+	_ = messageID
+	return nil
+}
+
+func (f *fakePersistenceService) MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
+	_ = ctx
+	_ = recipientUserID
 	_ = messageID
 	return nil
 }

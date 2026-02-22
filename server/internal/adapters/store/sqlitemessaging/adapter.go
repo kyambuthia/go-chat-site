@@ -3,6 +3,7 @@ package sqlitemessaging
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
 	coremsg "github.com/kyambuthia/go-chat-site/server/internal/core/messaging"
@@ -44,6 +45,13 @@ func (a *Adapter) MarkDelivered(ctx context.Context, messageID int64, deliveredA
 	return err
 }
 
+func (a *Adapter) MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64, deliveredAt time.Time) error {
+	if err := a.ensureRecipientOwnsMessage(ctx, recipientUserID, messageID); err != nil {
+		return err
+	}
+	return a.MarkDelivered(ctx, messageID, deliveredAt)
+}
+
 func (a *Adapter) MarkRead(ctx context.Context, messageID int64, readAt time.Time) error {
 	readAt = readAt.UTC()
 	_, err := a.DB.ExecContext(ctx, `
@@ -54,6 +62,13 @@ func (a *Adapter) MarkRead(ctx context.Context, messageID int64, readAt time.Tim
 			read_at = COALESCE(message_deliveries.read_at, excluded.read_at)
 	`, messageID, readAt, readAt)
 	return err
+}
+
+func (a *Adapter) MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error {
+	if err := a.ensureRecipientOwnsMessage(ctx, recipientUserID, messageID); err != nil {
+		return err
+	}
+	return a.MarkRead(ctx, messageID, readAt)
 }
 
 func (a *Adapter) ListInbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
@@ -118,4 +133,20 @@ func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 		msg.ReadAt = &t
 	}
 	return msg, nil
+}
+
+func (a *Adapter) ensureRecipientOwnsMessage(ctx context.Context, recipientUserID int, messageID int64) error {
+	var exists int
+	err := a.DB.QueryRowContext(ctx, `
+		SELECT 1
+		FROM messages
+		WHERE id = ? AND to_user_id = ?
+	`, messageID, recipientUserID).Scan(&exists)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return coremsg.ErrMessageNotFound
+	}
+	return err
 }

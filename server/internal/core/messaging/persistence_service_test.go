@@ -8,17 +8,24 @@ import (
 )
 
 type fakePersistenceRepo struct {
-	saveResp       StoredMessage
-	saveErr        error
-	lastSave       StoredMessage
-	lastDelivered  int64
-	deliveredErr   error
-	lastRead       int64
-	readErr        error
-	listResp       []StoredMessage
-	listErr        error
-	lastListUserID int
-	lastListLimit  int
+	saveResp                    StoredMessage
+	saveErr                     error
+	lastSave                    StoredMessage
+	lastDelivered               int64
+	deliveredErr                error
+	lastRead                    int64
+	lastReadUserID              int
+	readErr                     error
+	lastDeliveredRecipientID    int
+	lastDeliveredRecipientMsgID int64
+	deliveredRecipientErr       error
+	lastReadRecipientID         int
+	lastReadRecipientMsgID      int64
+	readRecipientErr            error
+	listResp                    []StoredMessage
+	listErr                     error
+	lastListUserID              int
+	lastListLimit               int
 }
 
 func (f *fakePersistenceRepo) SaveDirectMessage(ctx context.Context, msg StoredMessage) (StoredMessage, error) {
@@ -41,11 +48,27 @@ func (f *fakePersistenceRepo) MarkDelivered(ctx context.Context, messageID int64
 	return f.deliveredErr
 }
 
+func (f *fakePersistenceRepo) MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64, deliveredAt time.Time) error {
+	_ = ctx
+	_ = deliveredAt
+	f.lastDeliveredRecipientID = recipientUserID
+	f.lastDeliveredRecipientMsgID = messageID
+	return f.deliveredRecipientErr
+}
+
 func (f *fakePersistenceRepo) MarkRead(ctx context.Context, messageID int64, readAt time.Time) error {
 	_ = ctx
 	_ = readAt
 	f.lastRead = messageID
 	return f.readErr
+}
+
+func (f *fakePersistenceRepo) MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error {
+	_ = ctx
+	_ = readAt
+	f.lastReadRecipientID = recipientUserID
+	f.lastReadRecipientMsgID = messageID
+	return f.readRecipientErr
 }
 
 func (f *fakePersistenceRepo) ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
@@ -91,6 +114,25 @@ func TestPersistenceService_MarkDeliveredAndRead_Delegates(t *testing.T) {
 	}
 	if repo.lastRead != 10 {
 		t.Fatalf("lastRead = %d, want 10", repo.lastRead)
+	}
+}
+
+func TestPersistenceService_MarkDeliveredAndReadForRecipient_Delegates(t *testing.T) {
+	repo := &fakePersistenceRepo{}
+	svc := NewPersistenceService(repo)
+
+	if err := svc.MarkDeliveredForRecipient(context.Background(), 2, 10); err != nil {
+		t.Fatalf("MarkDeliveredForRecipient error: %v", err)
+	}
+	if repo.lastDeliveredRecipientID != 2 || repo.lastDeliveredRecipientMsgID != 10 {
+		t.Fatalf("unexpected delivered recipient call user=%d msg=%d", repo.lastDeliveredRecipientID, repo.lastDeliveredRecipientMsgID)
+	}
+
+	if err := svc.MarkReadForRecipient(context.Background(), 2, 10); err != nil {
+		t.Fatalf("MarkReadForRecipient error: %v", err)
+	}
+	if repo.lastReadRecipientID != 2 || repo.lastReadRecipientMsgID != 10 {
+		t.Fatalf("unexpected read recipient call user=%d msg=%d", repo.lastReadRecipientID, repo.lastReadRecipientMsgID)
 	}
 }
 

@@ -2,12 +2,15 @@ package messaging
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
 type UserID int
 
 type MessageKind string
+
+var ErrMessageNotFound = errors.New("message not found")
 
 const (
 	KindDirectMessage MessageKind = "direct_message"

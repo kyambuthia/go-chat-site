@@ -37,8 +37,22 @@ func (f *fakeMessagingPersistence) MarkDelivered(ctx context.Context, messageID 
 	return f.deliveredErr
 }
 
+func (f *fakeMessagingPersistence) MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
+	_ = ctx
+	_ = recipientUserID
+	f.lastDeliveredID = messageID
+	return f.deliveredErr
+}
+
 func (f *fakeMessagingPersistence) MarkRead(ctx context.Context, messageID int64) error {
 	_ = ctx
+	f.lastReadID = messageID
+	return f.readErr
+}
+
+func (f *fakeMessagingPersistence) MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
+	_ = ctx
+	_ = recipientUserID
 	f.lastReadID = messageID
 	return f.readErr
 }
@@ -178,6 +192,19 @@ func TestMessagesHandler_MarkRead_ValidatesAndDelegates(t *testing.T) {
 			t.Fatalf("status = %d, want 500", rr.Code)
 		}
 	})
+
+	t.Run("message not found", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{readErr: coremsg.ErrMessageNotFound}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":42}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkRead(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rr.Code)
+		}
+	})
 }
 
 func TestMessagesHandler_MarkDelivered_ValidatesAndDelegates(t *testing.T) {
@@ -222,6 +249,19 @@ func TestMessagesHandler_MarkDelivered_ValidatesAndDelegates(t *testing.T) {
 		h.MarkDelivered(rr, req)
 		if rr.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", rr.Code)
+		}
+	})
+
+	t.Run("message not found", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{deliveredErr: coremsg.ErrMessageNotFound}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":43}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkDelivered(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rr.Code)
 		}
 	})
 }

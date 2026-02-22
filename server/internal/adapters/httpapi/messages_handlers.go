@@ -76,7 +76,8 @@ func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := auth.UserIDFromContext(r.Context()); !ok {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
 		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
 		return
 	}
@@ -98,7 +99,11 @@ func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.Messaging.MarkRead(r.Context(), req.MessageID); err != nil {
+	if err := h.Messaging.MarkReadForRecipient(r.Context(), userID, req.MessageID); err != nil {
+		if errors.Is(err, coremsg.ErrMessageNotFound) {
+			web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
+			return
+		}
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
@@ -111,7 +116,8 @@ func (h *MessagesHandler) MarkDelivered(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if _, ok := auth.UserIDFromContext(r.Context()); !ok {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
 		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
 		return
 	}
@@ -133,7 +139,11 @@ func (h *MessagesHandler) MarkDelivered(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := h.Messaging.MarkDelivered(r.Context(), req.MessageID); err != nil {
+	if err := h.Messaging.MarkDeliveredForRecipient(r.Context(), userID, req.MessageID); err != nil {
+		if errors.Is(err, coremsg.ErrMessageNotFound) {
+			web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
+			return
+		}
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}

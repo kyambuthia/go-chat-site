@@ -2,6 +2,7 @@ package sqlitemessaging
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -131,5 +132,29 @@ func TestAdapter_MarkRead_WithoutPriorDeliverySetsDeliveredToo(t *testing.T) {
 	}
 	if inbox[0].DeliveredAt == nil || inbox[0].ReadAt == nil {
 		t.Fatalf("expected delivered/read timestamps after read, got %+v", inbox[0])
+	}
+}
+
+func TestAdapter_RecipientScopedReceipts_RejectWrongRecipient(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	charlieID := seedUser(t, s, "charlie")
+	a := &Adapter{DB: s.DB}
+
+	saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "hello",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage error: %v", err)
+	}
+
+	if err := a.MarkDeliveredForRecipient(context.Background(), charlieID, saved.ID, time.Now().UTC()); !errors.Is(err, coremsg.ErrMessageNotFound) {
+		t.Fatalf("expected ErrMessageNotFound for wrong recipient delivered, got %v", err)
+	}
+	if err := a.MarkReadForRecipient(context.Background(), charlieID, saved.ID, time.Now().UTC()); !errors.Is(err, coremsg.ErrMessageNotFound) {
+		t.Fatalf("expected ErrMessageNotFound for wrong recipient read, got %v", err)
 	}
 }

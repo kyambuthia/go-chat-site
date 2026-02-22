@@ -564,6 +564,30 @@ func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
 			t.Fatalf("status = %d, want 400", rr.Code)
 		}
 	})
+
+	t.Run("returns not found for message owned by another recipient", func(t *testing.T) {
+		charlieID, err := s.CreateUser("charlie", "password123")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, aliceID, charlieID, "secret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherMsgID, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/read", bytes.NewReader([]byte(`{"message_id":`+strconv.FormatInt(otherMsgID, 10)+`}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404; body=%s", rr.Code, rr.Body.String())
+		}
+	})
 }
 
 func TestMessagesDeliveredRoute_AdditiveReceiptEndpoint(t *testing.T) {
@@ -637,6 +661,30 @@ func TestMessagesDeliveredRoute_AdditiveReceiptEndpoint(t *testing.T) {
 		apiHandler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("returns not found for message owned by another recipient", func(t *testing.T) {
+		charlieID, err := s.CreateUser("charlie", "password123")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, aliceID, charlieID, "secret")
+		if err != nil {
+			t.Fatal(err)
+		}
+		otherMsgID, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":`+strconv.FormatInt(otherMsgID, 10)+`}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404; body=%s", rr.Code, rr.Body.String())
 		}
 	})
 }

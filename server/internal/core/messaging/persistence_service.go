@@ -14,14 +14,18 @@ type PersistDirectMessageRequest struct {
 type MessageRepository interface {
 	SaveDirectMessage(ctx context.Context, msg StoredMessage) (StoredMessage, error)
 	MarkDelivered(ctx context.Context, messageID int64, deliveredAt time.Time) error
+	MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64, deliveredAt time.Time) error
 	MarkRead(ctx context.Context, messageID int64, readAt time.Time) error
+	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 }
 
 type PersistenceService interface {
 	StoreDirectMessage(ctx context.Context, req PersistDirectMessageRequest) (StoredMessage, error)
 	MarkDelivered(ctx context.Context, messageID int64) error
+	MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
 	MarkRead(ctx context.Context, messageID int64) error
+	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 }
 
@@ -51,6 +55,14 @@ func (s *persistenceService) MarkDelivered(ctx context.Context, messageID int64)
 
 func (s *persistenceService) MarkRead(ctx context.Context, messageID int64) error {
 	return s.repo.MarkRead(ctx, messageID, s.now().UTC())
+}
+
+func (s *persistenceService) MarkDeliveredForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
+	return s.repo.MarkDeliveredForRecipient(ctx, recipientUserID, messageID, s.now().UTC())
+}
+
+func (s *persistenceService) MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error {
+	return s.repo.MarkReadForRecipient(ctx, recipientUserID, messageID, s.now().UTC())
 }
 
 func (s *persistenceService) ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
