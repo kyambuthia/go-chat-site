@@ -19,10 +19,12 @@ type fakeMessagingPersistence struct {
 	listErr          error
 	lastUserID       int
 	lastLimit        int
+	lastWithUserID   int
 	lastBeforeID     int64
 	listBeforeErr    error
 	lastAfterID      int64
 	listAfterErr     error
+	listWithUserErr  error
 	lastDeliveredID  int64
 	deliveredErr     error
 	lastReadID       int64
@@ -82,6 +84,14 @@ func (f *fakeMessagingPersistence) ListInbox(ctx context.Context, userID int, li
 	return f.listResp, f.listErr
 }
 
+func (f *fakeMessagingPersistence) ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastWithUserID = withUserID
+	f.lastLimit = limit
+	return f.listResp, f.listWithUserErr
+}
+
 func (f *fakeMessagingPersistence) ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
@@ -90,9 +100,27 @@ func (f *fakeMessagingPersistence) ListInboxBefore(ctx context.Context, userID i
 	return f.listResp, f.listBeforeErr
 }
 
+func (f *fakeMessagingPersistence) ListInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastWithUserID = withUserID
+	f.lastBeforeID = beforeID
+	f.lastLimit = limit
+	return f.listResp, f.listBeforeErr
+}
+
 func (f *fakeMessagingPersistence) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
+	f.lastAfterID = afterID
+	f.lastLimit = limit
+	return f.listResp, f.listAfterErr
+}
+
+func (f *fakeMessagingPersistence) ListInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastWithUserID = withUserID
 	f.lastAfterID = afterID
 	f.lastLimit = limit
 	return f.listResp, f.listAfterErr
@@ -189,6 +217,23 @@ func TestMessagesHandler_GetInbox_SupportsAfterIDCursor(t *testing.T) {
 	}
 }
 
+func TestMessagesHandler_GetInbox_SupportsWithUserFilter(t *testing.T) {
+	svc := &fakeMessagingPersistence{}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?with_user_id=7&limit=10", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+	h.GetInbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if svc.lastUserID != 2 || svc.lastWithUserID != 7 || svc.lastLimit != 10 {
+		t.Fatalf("unexpected ListInboxWithUser call user=%d with_user=%d limit=%d", svc.lastUserID, svc.lastWithUserID, svc.lastLimit)
+	}
+}
+
 func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid limit", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
@@ -217,6 +262,18 @@ func TestMessagesHandler_GetInbox_MapsErrorsAndInvalidLimit(t *testing.T) {
 	t.Run("invalid after_id", func(t *testing.T) {
 		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
 		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?after_id=abc", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetInbox(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("invalid with_user_id", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?with_user_id=abc", nil)
 		req = req.WithContext(auth.WithUserID(req.Context(), 2))
 		rr := httptest.NewRecorder()
 

@@ -113,6 +113,14 @@ func (f *fakePersistenceService) ListInbox(ctx context.Context, userID int, limi
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = withUserID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID
@@ -121,9 +129,27 @@ func (f *fakePersistenceService) ListInboxBefore(ctx context.Context, userID int
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = withUserID
+	_ = beforeID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID
+	_ = afterID
+	_ = limit
+	return nil, nil
+}
+
+func (f *fakePersistenceService) ListInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = withUserID
 	_ = afterID
 	_ = limit
 	return nil, nil

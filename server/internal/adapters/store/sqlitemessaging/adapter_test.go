@@ -220,3 +220,54 @@ func TestAdapter_ListInboxAfter_ReturnsNewerMessagesAscendingByID(t *testing.T) 
 		t.Fatalf("unexpected ascending page order/contents: %+v", page)
 	}
 }
+
+func TestAdapter_ListInboxWithUser_FiltersByCounterparty(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	charlieID := seedUser(t, s, "charlie")
+	a := &Adapter{DB: s.DB}
+
+	var aliceMsgID int64
+	for _, tc := range []struct {
+		from int
+		body string
+	}{
+		{from: aliceID, body: "from-alice-1"},
+		{from: charlieID, body: "from-charlie"},
+		{from: aliceID, body: "from-alice-2"},
+	} {
+		saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+			FromUserID: tc.from,
+			ToUserID:   bobID,
+			Body:       tc.body,
+		})
+		if err != nil {
+			t.Fatalf("SaveDirectMessage error: %v", err)
+		}
+		if tc.body == "from-alice-2" {
+			aliceMsgID = saved.ID
+		}
+	}
+
+	inbox, err := a.ListInboxWithUser(context.Background(), bobID, aliceID, 10)
+	if err != nil {
+		t.Fatalf("ListInboxWithUser error: %v", err)
+	}
+	if len(inbox) != 2 {
+		t.Fatalf("expected 2 alice messages, got %d", len(inbox))
+	}
+	for _, msg := range inbox {
+		if msg.FromUserID != aliceID {
+			t.Fatalf("unexpected sender in filtered inbox: %+v", msg)
+		}
+	}
+
+	page, err := a.ListInboxBeforeWithUser(context.Background(), bobID, aliceID, aliceMsgID, 10)
+	if err != nil {
+		t.Fatalf("ListInboxBeforeWithUser error: %v", err)
+	}
+	if len(page) != 1 || page[0].Body != "from-alice-1" {
+		t.Fatalf("unexpected filtered before-page: %+v", page)
+	}
+}

@@ -19,8 +19,11 @@ type MessageRepository interface {
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error
 	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
+	ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
 	ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
+	ListInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]StoredMessage, error)
 	ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
+	ListInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error)
 }
 
 type PersistenceService interface {
@@ -31,8 +34,11 @@ type PersistenceService interface {
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
 	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
+	ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
 	ListInboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
+	ListInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]StoredMessage, error)
 	ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
+	ListInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error)
 }
 
 type persistenceService struct {
@@ -89,9 +95,30 @@ func (s *persistenceService) ListInboxBefore(ctx context.Context, userID int, be
 	return s.repo.ListInboxBefore(ctx, userID, beforeID, limit)
 }
 
+func (s *persistenceService) ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListInboxWithUser(ctx, userID, withUserID, limit)
+}
+
+func (s *persistenceService) ListInboxBeforeWithUser(ctx context.Context, userID int, withUserID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListInboxBeforeWithUser(ctx, userID, withUserID, beforeID, limit)
+}
+
 func (s *persistenceService) ListInboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	return s.repo.ListInboxAfter(ctx, userID, afterID, limit)
+}
+
+func (s *persistenceService) ListInboxAfterWithUser(ctx context.Context, userID int, withUserID int, afterID int64, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListInboxAfterWithUser(ctx, userID, withUserID, afterID, limit)
 }

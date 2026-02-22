@@ -530,6 +530,48 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 			t.Fatalf("body = %q, want second", got)
 		}
 	})
+
+	t.Run("supports with_user_id filtering", func(t *testing.T) {
+		charlieID, err := s.CreateUser("charlie", "password123")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, charlieID, bobID, "charlie-msg"); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?with_user_id="+strconv.Itoa(aliceID)+"&limit=10", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if len(resp) != 2 {
+			t.Fatalf("expected 2 alice messages only, got %d", len(resp))
+		}
+		for _, msg := range resp {
+			if got := int(msg["from_user_id"].(float64)); got != aliceID {
+				t.Fatalf("from_user_id = %d, want %d", got, aliceID)
+			}
+		}
+	})
+
+	t.Run("rejects invalid with_user_id filter", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox?with_user_id=abc", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
 }
 
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
