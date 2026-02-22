@@ -33,6 +33,8 @@ func (h *MessagesHandler) GetOutbox(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := 0
+	beforeID := int64(0)
+	afterID := int64(0)
 	if raw := r.URL.Query().Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n <= 0 {
@@ -41,8 +43,36 @@ func (h *MessagesHandler) GetOutbox(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = n
 	}
+	if raw := r.URL.Query().Get("before_id"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid before_id"), http.StatusBadRequest)
+			return
+		}
+		beforeID = n
+	}
+	if raw := r.URL.Query().Get("after_id"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid after_id"), http.StatusBadRequest)
+			return
+		}
+		afterID = n
+	}
+	if beforeID > 0 && afterID > 0 {
+		web.JSONError(w, errors.New("before_id and after_id cannot be combined"), http.StatusBadRequest)
+		return
+	}
 
-	outbox, err := h.Messaging.ListOutbox(r.Context(), userID, limit)
+	var outbox []coremsg.StoredMessage
+	var err error
+	if beforeID > 0 {
+		outbox, err = h.Messaging.ListOutboxBefore(r.Context(), userID, beforeID, limit)
+	} else if afterID > 0 {
+		outbox, err = h.Messaging.ListOutboxAfter(r.Context(), userID, afterID, limit)
+	} else {
+		outbox, err = h.Messaging.ListOutbox(r.Context(), userID, limit)
+	}
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return

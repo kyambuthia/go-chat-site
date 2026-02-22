@@ -131,6 +131,22 @@ func (f *fakePersistenceService) ListOutbox(ctx context.Context, userID int, lim
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListOutboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = beforeID
+	_ = limit
+	return nil, nil
+}
+
+func (f *fakePersistenceService) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = afterID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID

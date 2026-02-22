@@ -20,6 +20,8 @@ type MessageRepository interface {
 	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListOutbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
+	ListOutboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
+	ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
 	ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
 	ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
@@ -42,6 +44,8 @@ type PersistenceService interface {
 	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListOutbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
+	ListOutboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error)
+	ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error)
 	ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
 	ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
@@ -107,6 +111,20 @@ func (s *persistenceService) ListOutbox(ctx context.Context, userID int, limit i
 		limit = 100
 	}
 	return s.repo.ListOutbox(ctx, userID, limit)
+}
+
+func (s *persistenceService) ListOutboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListOutboxBefore(ctx, userID, beforeID, limit)
+}
+
+func (s *persistenceService) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListOutboxAfter(ctx, userID, afterID, limit)
 }
 
 func (s *persistenceService) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {

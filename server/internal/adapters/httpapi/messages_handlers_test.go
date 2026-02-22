@@ -97,6 +97,28 @@ func (f *fakeMessagingPersistence) ListOutbox(ctx context.Context, userID int, l
 	return f.listResp, f.listErr
 }
 
+func (f *fakeMessagingPersistence) ListOutboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastBeforeID = beforeID
+	f.lastLimit = limit
+	if f.outboxResp != nil || f.outboxErr != nil {
+		return f.outboxResp, f.outboxErr
+	}
+	return f.listResp, f.listBeforeErr
+}
+
+func (f *fakeMessagingPersistence) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastAfterID = afterID
+	f.lastLimit = limit
+	if f.outboxResp != nil || f.outboxErr != nil {
+		return f.outboxResp, f.outboxErr
+	}
+	return f.listResp, f.listAfterErr
+}
+
 func (f *fakeMessagingPersistence) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
 	_ = ctx
 	f.lastUserID = userID
@@ -289,6 +311,42 @@ func TestMessagesHandler_GetOutbox_UsesPersistenceServiceAndSupportsLimit(t *tes
 	if got := int(resp[0]["from_user_id"].(float64)); got != 2 {
 		t.Fatalf("from_user_id = %d, want 2", got)
 	}
+}
+
+func TestMessagesHandler_GetOutbox_SupportsBeforeAndAfterCursors(t *testing.T) {
+	t.Run("before_id", func(t *testing.T) {
+		svc := &fakeMessagingPersistence{}
+		h := &MessagesHandler{Messaging: svc}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?before_id=90&limit=10", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+		h.GetOutbox(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if svc.lastUserID != 2 || svc.lastBeforeID != 90 || svc.lastLimit != 10 {
+			t.Fatalf("unexpected ListOutboxBefore call user=%d before=%d limit=%d", svc.lastUserID, svc.lastBeforeID, svc.lastLimit)
+		}
+	})
+
+	t.Run("after_id", func(t *testing.T) {
+		svc := &fakeMessagingPersistence{}
+		h := &MessagesHandler{Messaging: svc}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?after_id=40&limit=10", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+		h.GetOutbox(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if svc.lastUserID != 2 || svc.lastAfterID != 40 || svc.lastLimit != 10 {
+			t.Fatalf("unexpected ListOutboxAfter call user=%d after=%d limit=%d", svc.lastUserID, svc.lastAfterID, svc.lastLimit)
+		}
+	})
 }
 
 func TestMessagesHandler_GetInbox_SupportsBeforeIDCursor(t *testing.T) {

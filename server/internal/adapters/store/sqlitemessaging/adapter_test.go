@@ -426,3 +426,45 @@ func TestAdapter_ListOutbox_ReturnsSentMessagesDescendingByID(t *testing.T) {
 		}
 	}
 }
+
+func TestAdapter_ListOutboxBeforeAndAfter_PaginatesByMessageID(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	var ids []int64
+	for _, body := range []string{"m1", "m2", "m3"} {
+		saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+			FromUserID: bobID,
+			ToUserID:   aliceID,
+			Body:       body,
+		})
+		if err != nil {
+			t.Fatalf("SaveDirectMessage error: %v", err)
+		}
+		ids = append(ids, saved.ID)
+	}
+
+	beforePage, err := a.ListOutboxBefore(context.Background(), bobID, ids[2], 10)
+	if err != nil {
+		t.Fatalf("ListOutboxBefore error: %v", err)
+	}
+	if len(beforePage) != 2 {
+		t.Fatalf("expected 2 messages before latest, got %d", len(beforePage))
+	}
+	if beforePage[0].ID != ids[1] || beforePage[1].ID != ids[0] {
+		t.Fatalf("unexpected outbox before-page: %+v", beforePage)
+	}
+
+	afterPage, err := a.ListOutboxAfter(context.Background(), bobID, ids[0], 10)
+	if err != nil {
+		t.Fatalf("ListOutboxAfter error: %v", err)
+	}
+	if len(afterPage) != 2 {
+		t.Fatalf("expected 2 messages after first, got %d", len(afterPage))
+	}
+	if afterPage[0].ID != ids[1] || afterPage[1].ID != ids[2] {
+		t.Fatalf("unexpected outbox after-page: %+v", afterPage)
+	}
+}

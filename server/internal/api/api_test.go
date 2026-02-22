@@ -641,6 +641,51 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 			t.Fatalf("to_user_id = %d, want %d", got, aliceID)
 		}
 	})
+
+	t.Run("supports outbox before_id and after_id cursors", func(t *testing.T) {
+		res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)`,
+			bobID, aliceID, "ob-1",
+			bobID, aliceID, "ob-2",
+			bobID, aliceID, "ob-3")
+		if err != nil {
+			t.Fatal(err)
+		}
+		lastOutboxID, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		firstOutboxID := lastOutboxID - 2
+
+		reqBefore := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?before_id="+strconv.FormatInt(lastOutboxID, 10)+"&limit=10", nil)
+		reqBefore.Header.Set("Authorization", "Bearer "+token)
+		rrBefore := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rrBefore, reqBefore)
+		if rrBefore.Code != http.StatusOK {
+			t.Fatalf("before status = %d, want 200; body=%s", rrBefore.Code, rrBefore.Body.String())
+		}
+		var beforeResp []map[string]any
+		if err := json.Unmarshal(rrBefore.Body.Bytes(), &beforeResp); err != nil {
+			t.Fatalf("unmarshal before response: %v", err)
+		}
+		if len(beforeResp) < 2 {
+			t.Fatalf("expected at least 2 outbox messages before cursor, got %d", len(beforeResp))
+		}
+
+		reqAfter := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?after_id="+strconv.FormatInt(firstOutboxID, 10)+"&limit=10", nil)
+		reqAfter.Header.Set("Authorization", "Bearer "+token)
+		rrAfter := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rrAfter, reqAfter)
+		if rrAfter.Code != http.StatusOK {
+			t.Fatalf("after status = %d, want 200; body=%s", rrAfter.Code, rrAfter.Body.String())
+		}
+		var afterResp []map[string]any
+		if err := json.Unmarshal(rrAfter.Body.Bytes(), &afterResp); err != nil {
+			t.Fatalf("unmarshal after response: %v", err)
+		}
+		if len(afterResp) < 2 {
+			t.Fatalf("expected at least 2 outbox messages after cursor, got %d", len(afterResp))
+		}
+	})
 }
 
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {

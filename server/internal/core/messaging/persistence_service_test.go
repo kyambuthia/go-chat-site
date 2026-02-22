@@ -92,6 +92,26 @@ func (f *fakePersistenceRepo) ListOutbox(ctx context.Context, userID int, limit 
 	return f.listResp, f.listErr
 }
 
+func (f *fakePersistenceRepo) ListOutboxBefore(ctx context.Context, userID int, beforeID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = beforeID
+	f.lastListUserID = userID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	f.lastListOutbox = true
+	return f.listResp, f.listErr
+}
+
+func (f *fakePersistenceRepo) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = afterID
+	f.lastListUserID = userID
+	f.lastListLimit = limit
+	f.lastListUnreadOnly = false
+	f.lastListOutbox = true
+	return f.listResp, f.listErr
+}
+
 func (f *fakePersistenceRepo) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	f.lastListUserID = userID
@@ -316,6 +336,25 @@ func TestPersistenceService_ListOutbox_UsesDefaultLimitAndDelegates(t *testing.T
 	}
 	if repo.lastListLimit != 100 {
 		t.Fatalf("default limit = %d, want 100", repo.lastListLimit)
+	}
+}
+
+func TestPersistenceService_ListOutboxBeforeAndAfter_UseDefaultLimitAndDelegate(t *testing.T) {
+	repo := &fakePersistenceRepo{}
+	svc := NewPersistenceService(repo)
+
+	if _, err := svc.ListOutboxBefore(context.Background(), 2, 99, 0); err != nil {
+		t.Fatalf("ListOutboxBefore error: %v", err)
+	}
+	if repo.lastListUserID != 2 || !repo.lastListOutbox || repo.lastListLimit != 100 {
+		t.Fatalf("unexpected outbox-before call user=%d outbox=%v limit=%d", repo.lastListUserID, repo.lastListOutbox, repo.lastListLimit)
+	}
+
+	if _, err := svc.ListOutboxAfter(context.Background(), 2, 10, 0); err != nil {
+		t.Fatalf("ListOutboxAfter error: %v", err)
+	}
+	if repo.lastListUserID != 2 || !repo.lastListOutbox || repo.lastListLimit != 100 {
+		t.Fatalf("unexpected outbox-after call user=%d outbox=%v limit=%d", repo.lastListUserID, repo.lastListOutbox, repo.lastListLimit)
 	}
 }
 
