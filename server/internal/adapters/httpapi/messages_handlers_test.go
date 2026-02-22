@@ -15,12 +15,14 @@ import (
 )
 
 type fakeMessagingPersistence struct {
-	listResp   []coremsg.StoredMessage
-	listErr    error
-	lastUserID int
-	lastLimit  int
-	lastReadID int64
-	readErr    error
+	listResp        []coremsg.StoredMessage
+	listErr         error
+	lastUserID      int
+	lastLimit       int
+	lastDeliveredID int64
+	deliveredErr    error
+	lastReadID      int64
+	readErr         error
 }
 
 func (f *fakeMessagingPersistence) StoreDirectMessage(ctx context.Context, req coremsg.PersistDirectMessageRequest) (coremsg.StoredMessage, error) {
@@ -31,8 +33,8 @@ func (f *fakeMessagingPersistence) StoreDirectMessage(ctx context.Context, req c
 
 func (f *fakeMessagingPersistence) MarkDelivered(ctx context.Context, messageID int64) error {
 	_ = ctx
-	_ = messageID
-	return nil
+	f.lastDeliveredID = messageID
+	return f.deliveredErr
 }
 
 func (f *fakeMessagingPersistence) MarkRead(ctx context.Context, messageID int64) error {
@@ -172,6 +174,52 @@ func TestMessagesHandler_MarkRead_ValidatesAndDelegates(t *testing.T) {
 		rr := httptest.NewRecorder()
 
 		h.MarkRead(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rr.Code)
+		}
+	})
+}
+
+func TestMessagesHandler_MarkDelivered_ValidatesAndDelegates(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		svc := &fakeMessagingPersistence{}
+		h := &MessagesHandler{Messaging: svc}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":43}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkDelivered(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if svc.lastDeliveredID != 43 {
+			t.Fatalf("lastDeliveredID = %d, want 43", svc.lastDeliveredID)
+		}
+	})
+
+	t.Run("invalid body", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkDelivered(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("service error", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{deliveredErr: errors.New("db down")}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":43}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkDelivered(rr, req)
 		if rr.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", rr.Code)
 		}

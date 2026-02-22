@@ -565,3 +565,78 @@ func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestMessagesDeliveredRoute_AdditiveReceiptEndpoint(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(bobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, aliceID, bobID, "hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	messageID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hub := ws.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	t.Run("marks delivered timestamp only", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":`+strconv.FormatInt(messageID, 10)+`}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+
+		var deliveredAt, readAt sql.NullTime
+		if err := s.DB.QueryRow(`SELECT delivered_at, read_at FROM message_deliveries WHERE message_id = ?`, messageID).Scan(&deliveredAt, &readAt); err != nil {
+			t.Fatalf("query message_deliveries: %v", err)
+		}
+		if !deliveredAt.Valid {
+			t.Fatal("expected delivered_at to be set")
+		}
+		if readAt.Valid {
+			t.Fatal("expected read_at to remain null")
+		}
+	})
+
+	t.Run("invalid request body", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/messages/delivered", bytes.NewReader([]byte(`{"message_id":0}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+}

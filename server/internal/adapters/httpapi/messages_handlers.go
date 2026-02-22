@@ -104,3 +104,38 @@ func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
+func (h *MessagesHandler) MarkDelivered(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	if _, ok := auth.UserIDFromContext(r.Context()); !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
+	if h.Messaging == nil {
+		web.JSONError(w, errors.New("messaging sync unavailable"), http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		MessageID int64 `json:"message_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
+		return
+	}
+	if req.MessageID <= 0 {
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Messaging.MarkDelivered(r.Context(), req.MessageID); err != nil {
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
