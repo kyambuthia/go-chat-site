@@ -19,6 +19,7 @@ type MessageRepository interface {
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64, readAt time.Time) error
 	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
+	ListOutbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
 	ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
@@ -40,6 +41,7 @@ type PersistenceService interface {
 	MarkReadForRecipient(ctx context.Context, recipientUserID int, messageID int64) error
 	GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (StoredMessage, error)
 	ListInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
+	ListOutbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error)
 	ListInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
 	ListUnreadInboxWithUser(ctx context.Context, userID int, withUserID int, limit int) ([]StoredMessage, error)
@@ -98,6 +100,13 @@ func (s *persistenceService) ListInbox(ctx context.Context, userID int, limit in
 		limit = 100
 	}
 	return s.repo.ListInbox(ctx, userID, limit)
+}
+
+func (s *persistenceService) ListOutbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ListOutbox(ctx, userID, limit)
 }
 
 func (s *persistenceService) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {

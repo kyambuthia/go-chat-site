@@ -17,6 +17,8 @@ import (
 type fakeMessagingPersistence struct {
 	listResp         []coremsg.StoredMessage
 	listErr          error
+	outboxResp       []coremsg.StoredMessage
+	outboxErr        error
 	lastUserID       int
 	lastLimit        int
 	lastWithUserID   int
@@ -82,6 +84,16 @@ func (f *fakeMessagingPersistence) ListInbox(ctx context.Context, userID int, li
 	_ = ctx
 	f.lastUserID = userID
 	f.lastLimit = limit
+	return f.listResp, f.listErr
+}
+
+func (f *fakeMessagingPersistence) ListOutbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastLimit = limit
+	if f.outboxResp != nil || f.outboxErr != nil {
+		return f.outboxResp, f.outboxErr
+	}
 	return f.listResp, f.listErr
 }
 
@@ -236,6 +248,46 @@ func TestMessagesHandler_GetInbox_UsesPersistenceServiceAndSupportsLimit(t *test
 	}
 	if _, ok := resp[0]["created_at"]; !ok {
 		t.Fatal("expected created_at field")
+	}
+}
+
+func TestMessagesHandler_GetOutbox_UsesPersistenceServiceAndSupportsLimit(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	svc := &fakeMessagingPersistence{
+		outboxResp: []coremsg.StoredMessage{{
+			ID:         20,
+			FromUserID: 2,
+			ToUserID:   1,
+			Body:       "sent",
+			CreatedAt:  now,
+		}},
+	}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?limit=5", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+	h.GetOutbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if svc.lastUserID != 2 || svc.lastLimit != 5 {
+		t.Fatalf("unexpected ListOutbox call user=%d limit=%d", svc.lastUserID, svc.lastLimit)
+	}
+
+	var resp []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(resp))
+	}
+	if got := int(resp[0]["id"].(float64)); got != 20 {
+		t.Fatalf("id = %d, want 20", got)
+	}
+	if got := int(resp[0]["from_user_id"].(float64)); got != 2 {
+		t.Fatalf("from_user_id = %d, want 2", got)
 	}
 }
 

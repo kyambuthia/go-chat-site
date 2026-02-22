@@ -124,6 +124,13 @@ func (f *fakePersistenceService) ListInbox(ctx context.Context, userID int, limi
 	return nil, nil
 }
 
+func (f *fakePersistenceService) ListOutbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
+	_ = ctx
+	_ = userID
+	_ = limit
+	return nil, nil
+}
+
 func (f *fakePersistenceService) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]StoredMessage, error) {
 	_ = ctx
 	_ = userID

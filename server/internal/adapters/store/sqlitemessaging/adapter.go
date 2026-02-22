@@ -93,6 +93,35 @@ func (a *Adapter) ListInbox(ctx context.Context, userID int, limit int) ([]corem
 	return a.listInboxQuery(ctx, userID, 0, 0, limit, false)
 }
 
+func (a *Adapter) ListOutbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
+	rows, err := a.DB.QueryContext(ctx, `
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		       md.delivered_at, md.read_at
+		FROM messages m
+		LEFT JOIN message_deliveries md ON md.message_id = m.id
+		WHERE m.from_user_id = ?
+		ORDER BY m.id DESC
+		LIMIT ?
+	`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]coremsg.StoredMessage, 0)
+	for rows.Next() {
+		msg, err := scanStoredMessage(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (a *Adapter) ListUnreadInbox(ctx context.Context, userID int, limit int) ([]coremsg.StoredMessage, error) {
 	return a.listInboxQuery(ctx, userID, 0, 0, limit, true)
 }

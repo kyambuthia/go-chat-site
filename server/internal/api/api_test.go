@@ -612,6 +612,35 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 			t.Fatalf("status = %d, want 400", rr.Code)
 		}
 	})
+
+	t.Run("returns outbox messages in descending order", func(t *testing.T) {
+		if _, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?), (?, ?, ?)`,
+			bobID, aliceID, "out-1", bobID, aliceID, "out-2"); err != nil {
+			t.Fatal(err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?limit=10", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+		if len(resp) < 2 {
+			t.Fatalf("expected at least 2 outbox messages, got %d", len(resp))
+		}
+		if got := int(resp[0]["from_user_id"].(float64)); got != bobID {
+			t.Fatalf("from_user_id = %d, want %d", got, bobID)
+		}
+		if got := int(resp[0]["to_user_id"].(float64)); got != aliceID {
+			t.Fatalf("to_user_id = %d, want %d", got, aliceID)
+		}
+	})
 }
 
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {

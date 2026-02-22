@@ -376,3 +376,53 @@ func TestAdapter_RecordClientMessageCorrelation_UpsertsBySenderAndClientMessageI
 		t.Fatalf("delivered = %d, want 1", deliveredInt)
 	}
 }
+
+func TestAdapter_ListOutbox_ReturnsSentMessagesDescendingByID(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	charlieID := seedUser(t, s, "charlie")
+	a := &Adapter{DB: s.DB}
+
+	saved1, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: bobID,
+		ToUserID:   aliceID,
+		Body:       "to-alice-1",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage 1: %v", err)
+	}
+	saved2, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: charlieID,
+		ToUserID:   aliceID,
+		Body:       "not-bob",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage 2: %v", err)
+	}
+	_ = saved2
+	saved3, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: bobID,
+		ToUserID:   charlieID,
+		Body:       "to-charlie",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage 3: %v", err)
+	}
+
+	outbox, err := a.ListOutbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListOutbox error: %v", err)
+	}
+	if len(outbox) != 2 {
+		t.Fatalf("expected 2 bob outbox messages, got %d", len(outbox))
+	}
+	if outbox[0].ID != saved3.ID || outbox[1].ID != saved1.ID {
+		t.Fatalf("unexpected outbox order/contents: %+v", outbox)
+	}
+	for _, msg := range outbox {
+		if msg.FromUserID != bobID {
+			t.Fatalf("unexpected outbox sender: %+v", msg)
+		}
+	}
+}

@@ -16,6 +16,40 @@ type MessagesHandler struct {
 	ReceiptTransport coremsg.Transport
 }
 
+func (h *MessagesHandler) GetOutbox(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+	if h.Messaging == nil {
+		web.JSONError(w, errors.New("messaging sync unavailable"), http.StatusServiceUnavailable)
+		return
+	}
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid limit"), http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+
+	outbox, err := h.Messaging.ListOutbox(r.Context(), userID, limit)
+	if err != nil {
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+	writeStoredMessagesJSON(w, outbox)
+}
+
 func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
@@ -115,26 +149,7 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := make([]map[string]any, 0, len(inbox))
-	for _, msg := range inbox {
-		item := map[string]any{
-			"id":           msg.ID,
-			"from_user_id": msg.FromUserID,
-			"to_user_id":   msg.ToUserID,
-			"body":         msg.Body,
-			"created_at":   msg.CreatedAt,
-		}
-		if msg.DeliveredAt != nil {
-			item["delivered_at"] = *msg.DeliveredAt
-		}
-		if msg.ReadAt != nil {
-			item["read_at"] = *msg.ReadAt
-		}
-		resp = append(resp, item)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	writeStoredMessagesJSON(w, inbox)
 }
 
 func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
@@ -247,4 +262,27 @@ func (h *MessagesHandler) tryPushReceipt(senderUserID int, kind coremsg.MessageK
 		Type: kind,
 		ID:   messageID,
 	})
+}
+
+func writeStoredMessagesJSON(w http.ResponseWriter, msgs []coremsg.StoredMessage) {
+	resp := make([]map[string]any, 0, len(msgs))
+	for _, msg := range msgs {
+		item := map[string]any{
+			"id":           msg.ID,
+			"from_user_id": msg.FromUserID,
+			"to_user_id":   msg.ToUserID,
+			"body":         msg.Body,
+			"created_at":   msg.CreatedAt,
+		}
+		if msg.DeliveredAt != nil {
+			item["delivered_at"] = *msg.DeliveredAt
+		}
+		if msg.ReadAt != nil {
+			item["read_at"] = *msg.ReadAt
+		}
+		resp = append(resp, item)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
