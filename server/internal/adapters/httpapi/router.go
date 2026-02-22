@@ -4,13 +4,10 @@ import (
 	"net/http"
 	"time"
 
-	sqlitecontacts "github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqlitecontacts"
-	sqliteledger "github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
+	"github.com/kyambuthia/go-chat-site/server/internal/app"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/config"
-	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
-	coreledger "github.com/kyambuthia/go-chat-site/server/internal/core/ledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 )
 
@@ -19,15 +16,12 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux := http.NewServeMux()
 	loginLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.LoginRateLimitPerMinute(), time.Minute))
 	wsHandshakeLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
+	wiring := app.NewWiring(dataStore)
 
 	authHandler := &AuthHandler{Store: dataStore}
-	contactsAdapter := &sqlitecontacts.Adapter{Store: dataStore}
-	contactsService := corecontacts.NewService(contactsAdapter, contactsAdapter)
-	contactsHandler := &ContactsHandler{Contacts: contactsService, Store: dataStore}
-	inviteHandler := &InviteHandler{Contacts: contactsService, Store: dataStore}
-	ledgerAdapter := &sqliteledger.Adapter{WalletStore: dataStore}
-	ledgerService := coreledger.NewService(ledgerAdapter, ledgerAdapter)
-	walletHandler := &WalletHandler{Ledger: ledgerService}
+	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts, Store: dataStore}
+	inviteHandler := &InviteHandler{Contacts: wiring.Contacts, Store: dataStore}
+	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
 	meHandler := &MeHandler{Store: dataStore}
 
 	mux.HandleFunc("/api/register", authHandler.Register)
@@ -44,27 +38,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
 
-	authenticator := func(token string) (int, string, error) {
-		claims, err := auth.ValidateToken(token)
-		if err != nil {
-			return 0, "", err
-		}
-		user, err := dataStore.GetUserByID(claims.UserID)
-		if err != nil {
-			return 0, "", err
-		}
-		return user.ID, user.Username, nil
-	}
-
-	resolve := func(username string) (int, error) {
-		user, err := dataStore.GetUserByUsername(username)
-		if err != nil {
-			return 0, err
-		}
-		return user.ID, nil
-	}
-
-	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, authenticator, resolve)))
+	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, app.WSAuthenticator(dataStore), app.WSResolveUserID(dataStore))))
 
 	return mux
 }
