@@ -25,6 +25,7 @@ type client struct {
 	conn            *websocket.Conn
 	send            chan Message
 	hub             *Hub
+	messaging       coremsg.Service
 	resolveToUserID func(string) (int, error)
 }
 
@@ -149,8 +150,23 @@ func (c *client) readLoop() {
 			continue
 		}
 
-		forwardMsg := Message{Type: coremsg.KindDirectMessage, From: c.username, Body: msg.Body}
-		if !c.hub.SendDirect(recipientID, forwardMsg) {
+		if c.messaging == nil {
+			c.trySend(Message{Type: coremsg.KindError, Body: "relay unavailable"})
+			continue
+		}
+
+		receipt, err := c.messaging.SendDirect(c.hub.ctx, coremsg.DirectSendRequest{
+			FromUserID: c.userID,
+			From:       c.username,
+			ToUserID:   recipientID,
+			Body:       msg.Body,
+			MessageID:  msg.ID,
+		})
+		if err != nil {
+			c.trySend(Message{Type: coremsg.KindError, Body: "delivery failed"})
+			continue
+		}
+		if !receipt.Delivered {
 			c.trySend(Message{Type: coremsg.KindError, Body: "User is not online: " + msg.To})
 			continue
 		}
@@ -250,6 +266,7 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 			conn:            conn,
 			send:            make(chan Message, 16),
 			hub:             h,
+			messaging:       coremsg.NewRelayService(h),
 			resolveToUserID: resolveToUserID,
 		}
 		if err := h.AddClient(c); err != nil {
