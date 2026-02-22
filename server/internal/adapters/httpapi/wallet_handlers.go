@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	coreledger "github.com/kyambuthia/go-chat-site/server/internal/core/ledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 type WalletHandler struct {
-	Store store.WalletStore
+	Ledger coreledger.Service
 }
 
 func (h *WalletHandler) GetWallet(w http.ResponseWriter, r *http.Request) {
@@ -26,18 +28,22 @@ func (h *WalletHandler) GetWallet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wallet, err := h.Store.GetWallet(userID)
+	account, err := h.Ledger.GetAccount(r.Context(), userID)
 	if err != nil {
 		web.JSONError(w, err, http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	idValue := any(account.ID)
+	if legacyID, err := strconv.Atoi(string(account.ID)); err == nil {
+		idValue = legacyID
+	}
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":            wallet.ID,
-		"user_id":       wallet.UserID,
-		"balance":       wallet.BalanceFloat(),
-		"balance_cents": wallet.BalanceCents,
+		"id":            idValue,
+		"user_id":       account.OwnerUserID,
+		"balance":       float64(account.BalanceCents) / 100.0,
+		"balance_cents": account.BalanceCents,
 	})
 }
 
@@ -63,19 +69,17 @@ func (h *WalletHandler) SendMoney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Store.GetUserByUsername(req.Username)
-	if err != nil {
-		web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
-		return
-	}
-
 	amountCents, err := store.DollarsToCents(req.Amount)
 	if err != nil {
 		web.JSONError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	if err := h.Store.SendMoney(senderID, user.ID, amountCents); err != nil {
+	if _, err := h.Ledger.SendTransferByUsername(r.Context(), senderID, req.Username, amountCents); err != nil {
+		if errors.Is(err, coreledger.ErrRecipientNotFound) {
+			web.JSONError(w, errors.New("user not found"), http.StatusNotFound)
+			return
+		}
 		if errors.Is(err, store.ErrInsufficientFund) {
 			web.JSONError(w, err, http.StatusBadRequest)
 			return

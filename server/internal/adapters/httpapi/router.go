@@ -4,9 +4,11 @@ import (
 	"net/http"
 	"time"
 
+	sqliteledger "github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/config"
+	coreledger "github.com/kyambuthia/go-chat-site/server/internal/core/ledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 )
 
@@ -19,7 +21,9 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	authHandler := &AuthHandler{Store: dataStore}
 	contactsHandler := &ContactsHandler{Store: dataStore}
 	inviteHandler := &InviteHandler{Store: dataStore}
-	walletHandler := &WalletHandler{Store: dataStore}
+	ledgerAdapter := &sqliteledger.Adapter{WalletStore: dataStore}
+	ledgerService := coreledger.NewService(ledgerAdapter, ledgerAdapter)
+	walletHandler := &WalletHandler{Ledger: ledgerService}
 	meHandler := &MeHandler{Store: dataStore}
 
 	mux.HandleFunc("/api/register", authHandler.Register)
