@@ -8,58 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kyambuthia/go-chat-site/server/internal/auth"
-	"github.com/kyambuthia/go-chat-site/server/internal/handlers"
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/httpapi"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 )
 
 func NewAPI(dataStore store.APIStore, hub *ws.Hub) http.Handler {
-	mux := http.NewServeMux()
-
-	authHandler := &handlers.AuthHandler{Store: dataStore}
-	contactsHandler := &handlers.ContactsHandler{Store: dataStore}
-	inviteHandler := &handlers.InviteHandler{Store: dataStore}
-	walletHandler := &handlers.WalletHandler{Store: dataStore}
-	meHandler := &handlers.MeHandler{Store: dataStore}
-
-	mux.HandleFunc("/api/register", authHandler.Register)
-	mux.HandleFunc("/api/login", auth.Login(dataStore))
-
-	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(contactsHandler.GetContacts)))
-
-	mux.Handle("/api/invites", auth.Middleware(http.HandlerFunc(inviteHandler.GetInvites)))
-	mux.Handle("/api/invites/send", auth.Middleware(http.HandlerFunc(inviteHandler.SendInvite)))
-	mux.Handle("/api/invites/accept", auth.Middleware(http.HandlerFunc(inviteHandler.AcceptInvite)))
-	mux.Handle("/api/invites/reject", auth.Middleware(http.HandlerFunc(inviteHandler.RejectInvite)))
-
-	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(meHandler.GetMe)))
-	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
-	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
-
-	authenticator := func(token string) (int, string, error) {
-		claims, err := auth.ValidateToken(token)
-		if err != nil {
-			return 0, "", err
-		}
-		user, err := dataStore.GetUserByID(claims.UserID)
-		if err != nil {
-			return 0, "", err
-		}
-		return user.ID, user.Username, nil
-	}
-
-	resolve := func(username string) (int, error) {
-		user, err := dataStore.GetUserByUsername(username)
-		if err != nil {
-			return 0, err
-		}
-		return user.ID, nil
-	}
-
-	mux.HandleFunc("/ws", ws.WebSocketHandler(hub, authenticator, resolve))
-
-	return loggingMiddleware(mux)
+	// Backward-compatible shim while route/handler composition lives in adapters/httpapi.
+	return loggingMiddleware(httpapi.NewRouter(dataStore, hub))
 }
 
 type statusRecorder struct {
