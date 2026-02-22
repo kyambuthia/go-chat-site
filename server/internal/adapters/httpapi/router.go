@@ -18,14 +18,14 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	wsHandshakeLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
 	wiring := app.NewWiring(dataStore)
 
-	authHandler := &AuthHandler{Store: dataStore}
+	authHandler := &AuthHandler{Identity: wiring.Auth}
 	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
 	inviteHandler := &InviteHandler{Contacts: wiring.Contacts}
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
 	meHandler := &MeHandler{Identity: wiring.Identity}
 
 	mux.HandleFunc("/api/register", authHandler.Register)
-	mux.Handle("/api/login", loginLimiter(auth.Login(dataStore)))
+	mux.Handle("/api/login", loginLimiter(http.HandlerFunc(authHandler.Login)))
 
 	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(contactsHandler.GetContacts)))
 

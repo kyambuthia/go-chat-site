@@ -1,8 +1,11 @@
 package app
 
 import (
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/identity/jwttokens"
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/identity/passwordbcrypt"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqlitecontacts"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteidentity"
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteidentityauth"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
@@ -14,17 +17,20 @@ import (
 // Wiring assembles core services and adapter-backed helper functions for HTTP/WS composition.
 type Wiring struct {
 	Contacts corecontacts.Service
+	Auth     coreid.AuthService
 	Identity coreid.ProfileService
 	Ledger   coreledger.Service
 }
 
 func NewWiring(dataStore store.APIStore) *Wiring {
 	contactsAdapter := &sqlitecontacts.Adapter{Store: dataStore}
+	authAdapter := &sqliteidentityauth.Adapter{Store: dataStore}
 	identityAdapter := &sqliteidentity.Adapter{Store: dataStore}
 	ledgerAdapter := &sqliteledger.Adapter{WalletStore: dataStore}
 
 	return &Wiring{
 		Contacts: corecontacts.NewService(contactsAdapter, contactsAdapter),
+		Auth:     coreid.NewAuthService(authAdapter, passwordbcrypt.Verifier{}, &jwttokens.Adapter{}),
 		Identity: coreid.NewProfileService(identityAdapter),
 		Ledger:   coreledger.NewService(ledgerAdapter, ledgerAdapter),
 	}
