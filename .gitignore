@@ -27,4 +27,7 @@ dist
 # DB
 /chat.db
 server/chat.db
-\n# Database and log files\n*.db\n*.log
+# Database and log files
+*.db
+*.log
+server/server.log
