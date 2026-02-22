@@ -2,15 +2,19 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	"github.com/kyambuthia/go-chat-site/server/internal/config"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 )
 
 // NewRouter builds the mux-based HTTP+WS adapter while preserving current route paths.
 func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux := http.NewServeMux()
+	loginLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.LoginRateLimitPerMinute(), time.Minute))
+	wsHandshakeLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
 
 	authHandler := &AuthHandler{Store: dataStore}
 	contactsHandler := &ContactsHandler{Store: dataStore}
@@ -19,7 +23,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	meHandler := &MeHandler{Store: dataStore}
 
 	mux.HandleFunc("/api/register", authHandler.Register)
-	mux.HandleFunc("/api/login", auth.Login(dataStore))
+	mux.Handle("/api/login", loginLimiter(auth.Login(dataStore)))
 
 	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(contactsHandler.GetContacts)))
 
@@ -52,7 +56,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 		return user.ID, nil
 	}
 
-	mux.HandleFunc("/ws", wsrelay.WebSocketHandler(hub, authenticator, resolve))
+	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, authenticator, resolve)))
 
 	return mux
 }

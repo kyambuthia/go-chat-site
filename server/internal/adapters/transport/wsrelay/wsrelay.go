@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/kyambuthia/go-chat-site/server/internal/config"
 	coremsg "github.com/kyambuthia/go-chat-site/server/internal/core/messaging"
 )
 
@@ -194,15 +195,19 @@ func (c *client) writeLoop() {
 	}
 }
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+func newUpgrader(checkOrigin func(*http.Request) bool) websocket.Upgrader {
+	if checkOrigin == nil {
+		checkOrigin = config.WSOriginCheckFunc()
+	}
+	return websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin:     checkOrigin,
+	}
 }
 
 func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(username string) (int, error)) http.HandlerFunc {
+	upgrader := newUpgrader(nil)
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := ""
 		authHeader := r.Header.Get("Authorization")

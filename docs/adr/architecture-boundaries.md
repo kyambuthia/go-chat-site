@@ -55,3 +55,8 @@ Tradeoffs:
 - No real payment rails yet
 - No marketplace business logic yet
 - Existing `/api/*` routes and `/ws` endpoint remain client-compatible
+
+## Environment Variables Added (Security Scaffolding)
+- `WS_ALLOWED_ORIGINS` (comma-separated origins) for WebSocket origin allowlist. If unset, development-safe localhost defaults are allowed and requests with no `Origin` header are accepted for local tooling/non-browser clients.
+- `LOGIN_RATE_LIMIT_PER_MINUTE` (optional, default `60`)
+- `WS_HANDSHAKE_RATE_LIMIT_PER_MINUTE` (optional, default `120`)
