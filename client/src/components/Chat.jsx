@@ -1,11 +1,27 @@
 import { useState, useEffect, useMemo } from "react";
-import { getContacts } from "../api";
-import { CheckIcon, PaperPlaneIcon, ArrowUpIcon, PersonIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
+import { getContacts, sendMoney } from "../api";
+import {
+  CheckIcon,
+  PaperPlaneIcon,
+  PersonIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  Cross2Icon,
+} from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
-import SendMoneyForm from "./SendMoneyForm";
+
+const MICROAPP_PREFIX = "__microapp_v1__:";
 
 function formatTime(isoString) {
   return new Date(isoString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatMoney(amount) {
+  const numeric = Number(amount);
+  if (!Number.isFinite(numeric)) {
+    return "$0.00";
+  }
+  return `$${numeric.toFixed(2)}`;
 }
 
 function dayLabel(isoString) {
@@ -41,15 +57,127 @@ function groupMessagesByDay(messages) {
   return groups;
 }
 
-function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOnline }) {
+function encodeMicroPayload(payload) {
+  return `${MICROAPP_PREFIX}${JSON.stringify(payload)}`;
+}
+
+function decodeMicroPayload(body) {
+  if (typeof body !== "string" || !body.startsWith(MICROAPP_PREFIX)) {
+    return null;
+  }
+  try {
+    return JSON.parse(body.slice(MICROAPP_PREFIX.length));
+  } catch (_err) {
+    return null;
+  }
+}
+
+function getPaymentRequestMeta(message) {
+  if (message?.paymentRequestId && Number.isFinite(Number(message.paymentAmount))) {
+    return {
+      requestId: String(message.paymentRequestId),
+      amount: Number(message.paymentAmount),
+      status: message.paymentStatus || "pending",
+      error: message.paymentError || "",
+    };
+  }
+
+  const payload = decodeMicroPayload(message?.body);
+  if (!payload || payload.kind !== "payment_request") {
+    return null;
+  }
+
+  const amount = Number(payload.amount);
+  if (!payload.requestId || !Number.isFinite(amount) || amount <= 0) {
+    return null;
+  }
+
+  return {
+    requestId: String(payload.requestId),
+    amount,
+    status: payload.status || "pending",
+    error: "",
+  };
+}
+
+function getPaymentUpdateMeta(message) {
+  const payload = decodeMicroPayload(message?.body);
+  if (!payload || payload.kind !== "payment_request_update" || !payload.requestId) {
+    return null;
+  }
+  return {
+    requestId: String(payload.requestId),
+    status: payload.status || "pending",
+  };
+}
+
+function addPaymentRequestMetadata(message) {
+  const paymentRequest = getPaymentRequestMeta(message);
+  if (!paymentRequest) {
+    return message;
+  }
+  return {
+    ...message,
+    paymentRequestId: paymentRequest.requestId,
+    paymentAmount: paymentRequest.amount,
+    paymentStatus: message.paymentStatus || paymentRequest.status || "pending",
+    paymentError: message.paymentError || "",
+  };
+}
+
+function updateThreadPaymentRequest(messages, requestId, patch) {
+  return messages.map((msg) => {
+    const meta = getPaymentRequestMeta(msg);
+    if (!meta || meta.requestId !== requestId) {
+      return msg;
+    }
+    return {
+      ...msg,
+      ...patch,
+      paymentRequestId: meta.requestId,
+      paymentAmount: meta.amount,
+      paymentStatus: patch.paymentStatus || msg.paymentStatus || meta.status,
+      paymentError: patch.paymentError ?? msg.paymentError ?? "",
+    };
+  });
+}
+
+function ChatWindow({
+  ws,
+  selectedContact,
+  messages,
+  onSendMessage,
+  onBack,
+  isOnline,
+  onSettlePaymentRequest,
+}) {
   const [newMessage, setNewMessage] = useState("");
-  const [showSendMoneyForm, setShowSendMoneyForm] = useState(false);
+  const [composerError, setComposerError] = useState("");
+  const [microAppsOpen, setMicroAppsOpen] = useState(false);
+  const [requestPaymentOpen, setRequestPaymentOpen] = useState(false);
+  const [requestAmount, setRequestAmount] = useState("");
+  const [requestError, setRequestError] = useState("");
+  const [expandedRequestId, setExpandedRequestId] = useState(null);
+  const [settlingRequestId, setSettlingRequestId] = useState(null);
 
   const timeline = useMemo(() => groupMessagesByDay(messages), [messages]);
+  const canUseSocket = !!ws && ws.readyState === WebSocket.OPEN;
+  const canSendText = !!newMessage.trim() && !!selectedContact;
+
+  const closeMicroApps = () => {
+    setMicroAppsOpen(false);
+    setRequestPaymentOpen(false);
+    setRequestError("");
+  };
 
   const handleSendMessage = () => {
     const trimmed = newMessage.trim();
-    if (!trimmed || !selectedContact || !ws || ws.readyState !== WebSocket.OPEN) {
+    if (!trimmed || !selectedContact) {
+      return;
+    }
+
+    if (!canUseSocket) {
+      setComposerError("Connecting… try again in a moment.");
       return;
     }
 
@@ -63,7 +191,63 @@ function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOn
 
     ws.send(JSON.stringify(message));
     onSendMessage(message);
+    setComposerError("");
     setNewMessage("");
+  };
+
+  const handleSendPaymentRequest = () => {
+    setRequestError("");
+
+    if (!selectedContact) {
+      return;
+    }
+    if (!canUseSocket) {
+      setRequestError("Chat is reconnecting. Try again in a moment.");
+      return;
+    }
+
+    const amount = Number.parseFloat(requestAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setRequestError("Enter a valid amount.");
+      return;
+    }
+
+    const requestId = `payreq_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const payload = {
+      kind: "payment_request",
+      requestId,
+      amount: Number(amount.toFixed(2)),
+    };
+
+    const message = addPaymentRequestMetadata({
+      id: Date.now() + 1,
+      type: "direct_message",
+      to: selectedContact.username,
+      body: encodeMicroPayload(payload),
+      createdAt: new Date().toISOString(),
+      paymentStatus: "pending",
+      paymentError: "",
+    });
+
+    ws.send(JSON.stringify(message));
+    onSendMessage(message);
+    setRequestAmount("");
+    closeMicroApps();
+  };
+
+  const handleSettleRequestClick = async (msg) => {
+    const paymentRequest = getPaymentRequestMeta(msg);
+    if (!paymentRequest || msg.sent || !msg.from) {
+      return;
+    }
+
+    setSettlingRequestId(paymentRequest.requestId);
+    try {
+      await onSettlePaymentRequest(msg);
+      setExpandedRequestId(null);
+    } finally {
+      setSettlingRequestId(null);
+    }
   };
 
   if (!selectedContact) {
@@ -72,58 +256,191 @@ function ChatWindow({ ws, selectedContact, messages, onSendMessage, onBack, isOn
 
   return (
     <div className="chat-window">
-      <div className="chat-header">
-        <button onClick={onBack} className="back-button">←</button>
+      <div className="chat-header compact">
+        <button onClick={onBack} className="back-button" aria-label="Back to contacts">←</button>
         <Avatar className={`avatar-placeholder ${isOnline ? "online" : ""}`}>
           <AvatarImage src="" alt="" />
-          <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
+          <AvatarFallback><PersonIcon width="20" height="20" /></AvatarFallback>
         </Avatar>
-        <h2>{selectedContact.display_name || selectedContact.username}</h2>
-        <button onClick={() => setShowSendMoneyForm(true)} className="send-money-chat-button">
-          <ArrowUpIcon />
-        </button>
+        <div className="chat-header-meta">
+          <h2>{selectedContact.display_name || selectedContact.username}</h2>
+          <p>{isOnline ? "Online" : "Offline"}</p>
+        </div>
       </div>
-      {showSendMoneyForm ? (
-        <SendMoneyForm
-          defaultRecipient={selectedContact.username}
-          onSendSuccess={() => setShowSendMoneyForm(false)}
-          onCancel={() => setShowSendMoneyForm(false)}
-        />
-      ) : (
-        <>
-          <div className="messages">
-            {messages.length === 0 && <p className="thread-empty">No messages yet. Start the conversation.</p>}
-            {timeline.map((entry, index) => {
-              if (entry.type === "day") {
-                return <div key={`day-${entry.label}-${index}`} className="day-separator">{entry.label}</div>;
-              }
 
-              const msg = entry.message;
-              return (
-                <div key={`${msg.id || index}-${msg.createdAt}`} className={`message ${msg.sent ? "sent" : "received"}`}>
-                  <div className="message-body">{msg.body}</div>
-                  <div className="message-meta">
-                    <span className="message-time">{formatTime(msg.createdAt)}</span>
-                    {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
+      <div className="messages compact">
+        {messages.length === 0 && <p className="thread-empty">No messages yet. Start the conversation.</p>}
+        {timeline.map((entry, index) => {
+          if (entry.type === "day") {
+            return <div key={`day-${entry.label}-${index}`} className="day-separator">{entry.label}</div>;
+          }
+
+          const msg = entry.message;
+          const paymentRequest = getPaymentRequestMeta(msg);
+          const isPaymentRequest = !!paymentRequest;
+          const isReceivedRequest = isPaymentRequest && !msg.sent;
+          const isPendingRequest = isPaymentRequest && paymentRequest.status === "pending";
+          const isExpanded = isPaymentRequest && expandedRequestId === paymentRequest.requestId;
+          const isSettling = isPaymentRequest && settlingRequestId === paymentRequest.requestId;
+
+          return (
+            <div key={`${msg.id || index}-${msg.createdAt}`} className={`message ${msg.sent ? "sent" : "received"}`}>
+              {isPaymentRequest ? (
+                <>
+                  {isReceivedRequest ? (
+                    <button
+                      type="button"
+                      className={`message-body payment-request-bubble ${isPendingRequest ? "is-clickable" : ""}`}
+                      onClick={() => {
+                        if (!isPendingRequest) {
+                          return;
+                        }
+                        setExpandedRequestId(isExpanded ? null : paymentRequest.requestId);
+                      }}
+                      title={isPendingRequest ? "Open payment request" : "Payment request"}
+                    >
+                      {formatMoney(paymentRequest.amount)}
+                    </button>
+                  ) : (
+                    <div className="message-body payment-request-bubble">
+                      {formatMoney(paymentRequest.amount)}
+                    </div>
+                  )}
+
+                  <div className="payment-request-row">
+                    <span className={`payment-request-status ${paymentRequest.status}`}>
+                      {paymentRequest.status === "paid"
+                        ? "Paid"
+                        : paymentRequest.status === "processing"
+                          ? "Processing…"
+                          : msg.sent
+                            ? "Requested"
+                            : "Tap to pay"}
+                    </span>
+                    {paymentRequest.error && <span className="payment-request-error">{paymentRequest.error}</span>}
                   </div>
+
+                  {isExpanded && isReceivedRequest && isPendingRequest && (
+                    <div className="payment-request-actions">
+                      <button type="button" onClick={() => handleSettleRequestClick(msg)} disabled={isSettling}>
+                        {isSettling ? "Processing…" : `Pay ${formatMoney(paymentRequest.amount)}`}
+                      </button>
+                      <button type="button" className="danger" onClick={() => setExpandedRequestId(null)} disabled={isSettling}>
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="message-body">{msg.body}</div>
+              )}
+
+              <div className="message-meta">
+                <span className="message-time">{formatTime(msg.createdAt)}</span>
+                {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="composer-shell">
+        {(microAppsOpen || requestPaymentOpen) && (
+          <div className="microapp-panel">
+            {!requestPaymentOpen ? (
+              <div className="microapp-grid">
+                <button
+                  type="button"
+                  className="microapp-tile"
+                  onClick={() => {
+                    setRequestPaymentOpen(true);
+                    setRequestError("");
+                  }}
+                >
+                  <span className="microapp-tile-title">Request Payment</span>
+                  <span className="microapp-tile-subtitle">Send amount bubble</span>
+                </button>
+              </div>
+            ) : (
+              <div className="request-payment-panel">
+                <div className="request-payment-header">
+                  <p>Request payment from @{selectedContact.username}</p>
+                  <button
+                    type="button"
+                    className="microapp-close"
+                    onClick={() => {
+                      setRequestPaymentOpen(false);
+                      setRequestError("");
+                    }}
+                    aria-label="Close payment request panel"
+                  >
+                    <Cross2Icon />
+                  </button>
                 </div>
-              );
-            })}
+                <div className="request-payment-controls">
+                  <input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={requestAmount}
+                    onChange={(e) => setRequestAmount(e.target.value)}
+                    aria-label="Request payment amount"
+                  />
+                  <button type="button" onClick={handleSendPaymentRequest}>Send Request</button>
+                </div>
+                {requestError && <p className="composer-inline-error">{requestError}</p>}
+              </div>
+            )}
           </div>
-          <div className="input-area">
-            <input
-              type="text"
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              placeholder="Type a message..."
-              onKeyUp={(e) => e.key === "Enter" && handleSendMessage()}
-            />
-            <button onClick={handleSendMessage} className="send-button" disabled={!ws || ws.readyState !== WebSocket.OPEN}>
-              <PaperPlaneIcon className="send-button-icon" />
-            </button>
-          </div>
-        </>
-      )}
+        )}
+
+        <div className="input-area compact">
+          <button
+            type="button"
+            className={`composer-action-btn ${microAppsOpen ? "open" : ""}`}
+            onClick={() => {
+              setMicroAppsOpen((prev) => {
+                const next = !prev;
+                if (!next) {
+                  setRequestPaymentOpen(false);
+                }
+                return next;
+              });
+              setRequestError("");
+            }}
+            aria-label="Open micro-apps"
+          >
+            <PlusIcon />
+          </button>
+
+          <input
+            type="text"
+            value={newMessage}
+            onChange={(e) => {
+              setNewMessage(e.target.value);
+              if (composerError) {
+                setComposerError("");
+              }
+            }}
+            placeholder={canUseSocket ? "Type a message..." : "Connecting…"}
+            onKeyUp={(e) => e.key === "Enter" && handleSendMessage()}
+            className="composer-text-input"
+          />
+
+          <button
+            onClick={handleSendMessage}
+            className="send-button"
+            disabled={!canSendText}
+            title={canUseSocket ? "Send message" : "Chat is reconnecting"}
+          >
+            <PaperPlaneIcon className="send-button-icon" />
+          </button>
+        </div>
+
+        {composerError && <p className="composer-inline-error">{composerError}</p>}
+      </div>
     </div>
   );
 }
@@ -175,10 +492,24 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     }
 
     if (lastWsMessage.type === "direct_message" && lastWsMessage.from) {
-      const normalized = {
+      const paymentUpdate = getPaymentUpdateMeta(lastWsMessage);
+      if (paymentUpdate) {
+        setThreads((prev) => {
+          const next = { ...prev };
+          const existing = next[lastWsMessage.from] || [];
+          next[lastWsMessage.from] = updateThreadPaymentRequest(existing, paymentUpdate.requestId, {
+            paymentStatus: paymentUpdate.status,
+            paymentError: "",
+          });
+          return next;
+        });
+        return;
+      }
+
+      const normalized = addPaymentRequestMetadata({
         ...lastWsMessage,
         createdAt: new Date().toISOString(),
-      };
+      });
 
       setThreads((prev) => ({
         ...prev,
@@ -235,18 +566,71 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       return;
     }
 
-    const normalized = {
+    const normalized = addPaymentRequestMetadata({
       ...message,
       from: "Me",
       sent: true,
       delivered: false,
       createdAt: message.createdAt || new Date().toISOString(),
-    };
+    });
 
     setThreads((prev) => ({
       ...prev,
       [selectedUsername]: [...(prev[selectedUsername] || []), normalized],
     }));
+  };
+
+  const handleSettlePaymentRequest = async (message) => {
+    const paymentRequest = getPaymentRequestMeta(message);
+    if (!paymentRequest || message.sent || !message.from) {
+      return;
+    }
+
+    const requestThread = message.from;
+    setThreads((prev) => {
+      const next = { ...prev };
+      next[requestThread] = updateThreadPaymentRequest(next[requestThread] || [], paymentRequest.requestId, {
+        paymentStatus: "processing",
+        paymentError: "",
+      });
+      return next;
+    });
+
+    try {
+      await sendMoney(message.from, paymentRequest.amount);
+
+      setThreads((prev) => {
+        const next = { ...prev };
+        next[requestThread] = updateThreadPaymentRequest(next[requestThread] || [], paymentRequest.requestId, {
+          paymentStatus: "paid",
+          paymentError: "",
+        });
+        return next;
+      });
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          id: Date.now(),
+          type: "direct_message",
+          to: message.from,
+          body: encodeMicroPayload({
+            kind: "payment_request_update",
+            requestId: paymentRequest.requestId,
+            status: "paid",
+          }),
+        }));
+      }
+    } catch (err) {
+      setThreads((prev) => {
+        const next = { ...prev };
+        next[requestThread] = updateThreadPaymentRequest(next[requestThread] || [], paymentRequest.requestId, {
+          paymentStatus: "pending",
+          paymentError: err?.message || "Payment failed.",
+        });
+        return next;
+      });
+      throw err;
+    }
   };
 
   if (loading) {
@@ -319,6 +703,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       onSendMessage={handleSendMessage}
       onBack={() => setSelectedContact(null)}
       isOnline={onlineUsers.includes(selectedContact.username)}
+      onSettlePaymentRequest={handleSettlePaymentRequest}
     />
   );
 }

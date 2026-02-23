@@ -312,9 +312,28 @@ button.accept {
   border-bottom: 1px solid var(--line);
 }
 
+.chat-header.compact {
+  gap: 10px;
+  padding: 10px 14px;
+}
+
 .chat-header h2 {
   margin: 0;
   font-size: 1rem;
+}
+
+.chat-header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-header-meta h2 {
+  font-size: 0.95rem;
+}
+
+.chat-header-meta p {
+  font-size: 0.72rem;
 }
 
 .back-button,
@@ -338,6 +357,11 @@ button.accept {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.messages.compact {
+  padding: 12px;
+  gap: 6px;
 }
 
 .messages .message {
@@ -367,6 +391,12 @@ button.accept {
   padding: 10px 12px;
   font-size: 0.93rem;
   word-break: break-word;
+}
+
+.messages.compact .message-body {
+  padding: 8px 10px;
+  border-radius: 11px;
+  font-size: 0.9rem;
 }
 
 .messages .message.sent {
@@ -409,17 +439,51 @@ button.accept {
   color: #111;
 }
 
+.composer-shell {
+  border-top: 1px solid var(--line);
+  background: #fff;
+  padding: 8px 10px 10px;
+}
+
 .input-area {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--line);
+}
+
+.input-area.compact {
+  gap: 8px;
+  padding: 0;
+  border-top: 0;
 }
 
 .input-area input {
   margin: 0;
   border-radius: 999px;
+}
+
+.composer-text-input {
+  min-width: 0;
+}
+
+.composer-action-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+}
+
+.composer-action-btn.open {
+  border-color: #111;
+  background: #111;
+  color: #fff;
 }
 
 .send-button {
@@ -430,6 +494,158 @@ button.accept {
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.microapp-panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.microapp-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.microapp-tile {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.microapp-tile:hover {
+  border-color: #111;
+}
+
+.microapp-tile-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.microapp-tile-subtitle {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.request-payment-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.request-payment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.request-payment-header p {
+  color: #111;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.microapp-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+}
+
+.request-payment-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.request-payment-controls input {
+  padding: 10px 12px;
+}
+
+.request-payment-controls button {
+  white-space: nowrap;
+}
+
+.composer-inline-error {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: #111;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 8px;
+  background: #fafafa;
+}
+
+.payment-request-bubble {
+  min-width: 110px;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.payment-request-bubble.is-clickable {
+  cursor: pointer;
+}
+
+.payment-request-bubble.is-clickable:hover {
+  opacity: 0.95;
+}
+
+.payment-request-row {
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.payment-request-status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #111;
+  background: #fff;
+}
+
+.payment-request-status.paid {
+  border-color: #111;
+}
+
+.payment-request-error {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.payment-request-actions {
+  margin-top: 6px;
+  display: flex;
+  gap: 6px;
+}
+
+.payment-request-actions button {
+  padding: 7px 10px;
+  font-size: 0.76rem;
+  border-radius: 10px;
 }
 
 .contacts-list {
@@ -719,6 +935,22 @@ button.accept {
   .input-area,
   .messages {
     padding: var(--space-3);
+  }
+
+  .chat-header.compact {
+    padding: 10px 12px;
+  }
+
+  .messages.compact {
+    padding: 10px;
+  }
+
+  .composer-shell {
+    padding: 8px;
+  }
+
+  .request-payment-controls {
+    grid-template-columns: 1fr;
   }
 
   .contacts-list,
