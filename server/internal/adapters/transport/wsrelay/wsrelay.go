@@ -24,6 +24,8 @@ type client struct {
 	username        string
 	conn            *websocket.Conn
 	send            chan Message
+	sendMu          sync.RWMutex
+	closed          bool
 	hub             *Hub
 	messaging       coremsg.Service
 	resolveToUserID func(string) (int, error)
@@ -77,8 +79,7 @@ func (h *Hub) Shutdown() {
 	h.cancel()
 	h.mu.Lock()
 	for _, c := range h.clients {
-		_ = c.conn.Close()
-		close(c.send)
+		c.close()
 	}
 	h.clients = map[int]*client{}
 	h.mu.Unlock()
@@ -90,8 +91,7 @@ func (h *Hub) AddClient(c *client) error {
 	}
 	h.mu.Lock()
 	if existing, ok := h.clients[c.userID]; ok {
-		_ = existing.conn.Close()
-		close(existing.send)
+		existing.close()
 	}
 	h.clients[c.userID] = c
 	h.mu.Unlock()
@@ -104,12 +104,12 @@ func (h *Hub) RemoveClient(userID int) {
 	h.mu.Lock()
 	client, ok := h.clients[userID]
 	if ok {
-		close(client.send)
 		delete(h.clients, userID)
 	}
 	h.mu.Unlock()
 
 	if ok {
+		client.close()
 		go h.broadcastExcept(userID, Message{Type: coremsg.KindUserOffline, From: client.username})
 	}
 }
@@ -121,12 +121,7 @@ func (h *Hub) SendDirect(toUserID int, msg Message) bool {
 	if !ok {
 		return false
 	}
-	select {
-	case c.send <- msg:
-		return true
-	case <-time.After(500 * time.Millisecond):
-		return false
-	}
+	return c.sendWithTimeout(msg, 500*time.Millisecond)
 }
 
 func (h *Hub) broadcastExcept(excludedUserID int, msg Message) {
@@ -198,10 +193,7 @@ func (c *client) readLoop() {
 }
 
 func (c *client) trySend(msg Message) {
-	select {
-	case c.send <- msg:
-	default:
-	}
+	_ = c.sendWithTimeout(msg, 0)
 }
 
 func (c *client) writeLoop() {
@@ -230,6 +222,49 @@ func (c *client) writeLoop() {
 		case <-c.hub.ctx.Done():
 			return
 		}
+	}
+}
+
+func (c *client) sendWithTimeout(msg Message, timeout time.Duration) bool {
+	c.sendMu.RLock()
+	defer c.sendMu.RUnlock()
+
+	if c.closed {
+		return false
+	}
+
+	if timeout <= 0 {
+		select {
+		case c.send <- msg:
+			return true
+		default:
+			return false
+		}
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case c.send <- msg:
+		return true
+	case <-timer.C:
+		return false
+	}
+}
+
+func (c *client) close() {
+	c.sendMu.Lock()
+	if c.closed {
+		c.sendMu.Unlock()
+		return
+	}
+	c.closed = true
+	close(c.send)
+	c.sendMu.Unlock()
+
+	if c.conn != nil {
+		_ = c.conn.Close()
 	}
 }
 
