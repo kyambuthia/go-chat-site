@@ -97,7 +97,13 @@ function App() {
       };
 
       socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
+        let message;
+        try {
+          message = JSON.parse(event.data);
+        } catch (err) {
+          console.error("Received invalid WebSocket payload:", err);
+          return;
+        }
         if (message.type === "user_online") {
           setOnlineUsers((prevOnlineUsers) =>
             prevOnlineUsers.includes(message.from) ? prevOnlineUsers : [...prevOnlineUsers, message.from]
