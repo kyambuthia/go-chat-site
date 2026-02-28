@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"database/sql"
+	"log"
 	"net/http"
 	"time"
 
@@ -15,8 +17,25 @@ import (
 // NewRouter builds the mux-based HTTP+WS adapter while preserving current route paths.
 func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux := http.NewServeMux()
-	loginLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.LoginRateLimitPerMinute(), time.Minute))
-	wsHandshakeLimiter := rateLimitMiddleware(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
+	loginLimiterImpl := requestRateLimiter(newFixedWindowRateLimiter(config.LoginRateLimitPerMinute(), time.Minute))
+	wsLimiterImpl := requestRateLimiter(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
+	if dbProvider, ok := dataStore.(interface{ SQLDB() *sql.DB }); ok && dbProvider.SQLDB() != nil {
+		loginShared, err := newSharedWindowRateLimiter(dbProvider.SQLDB(), config.LoginRateLimitPerMinute(), time.Minute)
+		if err != nil {
+			log.Printf("warn: shared login rate limiter disabled: %v", err)
+		} else {
+			loginLimiterImpl = loginShared
+		}
+
+		wsShared, err := newSharedWindowRateLimiter(dbProvider.SQLDB(), config.WSHandshakeRateLimitPerMinute(), time.Minute)
+		if err != nil {
+			log.Printf("warn: shared websocket rate limiter disabled: %v", err)
+		} else {
+			wsLimiterImpl = wsShared
+		}
+	}
+	loginLimiter := rateLimitMiddleware(loginLimiterImpl)
+	wsHandshakeLimiter := rateLimitMiddleware(wsLimiterImpl)
 	wiring := app.NewWiring(dataStore)
 	hub.SetDeliveryService(coremsg.NewDurableRelayServiceWithCorrelation(hub, wiring.MessagingPersistence, wiring.MessagingCorrelation))
 

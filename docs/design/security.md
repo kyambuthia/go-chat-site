@@ -14,9 +14,9 @@ Implemented in current codebase:
 - Risk: repeated login attempts, WS handshake floods, resource exhaustion
 - Current mitigation: lightweight per-IP fixed-window rate limits
 - Next steps:
-  - per-user + per-IP quotas
+  - per-user + per-IP quotas (rolling window backed by shared store)
   - structured security event logging
-  - lockout/backoff policy (`TODO: VERIFY` UX impact)
+  - lockout/backoff policy: 5 failed logins in 15 minutes triggers a 15-minute cool-down
 
 ### 2. Session Token Misuse
 - Risk: stolen JWT used for API and WS impersonation
@@ -24,7 +24,7 @@ Implemented in current codebase:
 - Next steps:
   - refresh tokens/device sessions
   - token rotation and revocation list
-  - device-bound sessions (`TODO: VERIFY`)
+  - device-bound sessions: planned for post-MVP, after refresh-token rollout
 
 ### 3. WebSocket Cross-Origin Abuse
 - Risk: browser-based malicious sites connecting to local/dev WS endpoint
@@ -38,7 +38,7 @@ Implemented in current codebase:
 - Current mitigation: transport auth only (no E2EE)
 - Next steps:
   - add device key infrastructure
-  - define E2EE protocol and metadata minimization policy (`TODO: VERIFY`)
+  - protocol direction selected: X3DH + Double Ratchet for 1:1 messaging; MLS deferred for group messaging
 
 ### 5. Payment / Ledger Fraud and Compliance Exposure
 - Risk: fund theft, fake disputes, sanctions/KYC violations once real rails exist
@@ -58,7 +58,7 @@ Implemented in current codebase:
 - Include request correlation IDs in API logs.
 - Avoid logging secrets, credentials, raw JWTs, or private key material.
 - Add event categories for auth failures, rate-limit hits, and critical ledger operations.
-- Define retention and access policy (`TODO: VERIFY`).
+- Retention and access policy: application logs retained 30 days by default; access restricted to operators.
 
 ## Security Design Rules for Future PRs
 - New external integrations must enter through adapters.

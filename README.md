@@ -20,7 +20,12 @@ Client env (optional):
 ```bash
 VITE_API_URL=http://localhost:8080
 VITE_WS_URL=ws://localhost:8080
+VITE_API_BASE_URL=http://localhost:8080
 ```
+
+Notes:
+- `VITE_API_BASE_URL` is the explicit API origin used by the client in split-origin deployments.
+- `VITE_WS_URL` can be either `ws(s)://host` or `ws(s)://host/ws`.
 
 ### 2. Run Backend
 

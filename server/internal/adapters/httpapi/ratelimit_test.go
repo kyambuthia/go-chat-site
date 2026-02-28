@@ -1,11 +1,14 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func TestFixedWindowRateLimiter_AllowAndWindowReset(t *testing.T) {
@@ -96,5 +99,57 @@ func TestClientIP_FallbacksToRemoteAddrHostThenUnknown(t *testing.T) {
 	reqUnknown.RemoteAddr = ""
 	if got := clientIP(reqUnknown); got != "unknown" {
 		t.Fatalf("clientIP(empty) = %q, want unknown", got)
+	}
+}
+
+func TestSharedWindowRateLimiter_SharedAcrossInstances(t *testing.T) {
+	db, err := sql.Open("sqlite3", "file:ratelimit_shared?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	l1, err := newSharedWindowRateLimiter(db, 2, time.Minute)
+	if err != nil {
+		t.Fatalf("new shared limiter l1: %v", err)
+	}
+	l2, err := newSharedWindowRateLimiter(db, 2, time.Minute)
+	if err != nil {
+		t.Fatalf("new shared limiter l2: %v", err)
+	}
+
+	if !l1.allow("198.51.100.1") {
+		t.Fatal("first request should pass")
+	}
+	if !l2.allow("198.51.100.1") {
+		t.Fatal("second request should pass")
+	}
+	if l1.allow("198.51.100.1") {
+		t.Fatal("third request should be rate limited")
+	}
+}
+
+func TestSharedWindowRateLimiter_ResetsAfterWindow(t *testing.T) {
+	db, err := sql.Open("sqlite3", "file:ratelimit_reset?mode=memory&cache=shared")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	limiter, err := newSharedWindowRateLimiter(db, 1, time.Second)
+	if err != nil {
+		t.Fatalf("new shared limiter: %v", err)
+	}
+	if !limiter.allow("203.0.113.9") {
+		t.Fatal("first request should pass")
+	}
+	if limiter.allow("203.0.113.9") {
+		t.Fatal("second request in same window should be limited")
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+
+	if !limiter.allow("203.0.113.9") {
+		t.Fatal("request after window reset should pass")
 	}
 }

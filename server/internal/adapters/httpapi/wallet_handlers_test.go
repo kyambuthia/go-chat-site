@@ -85,7 +85,7 @@ func TestWalletHandler_SendMoney_MapsInsufficientFundsToBadRequest(t *testing.T)
 	svc := &fakeLedgerService{transferErr: store.ErrInsufficientFund}
 	h := &WalletHandler{Ledger: svc}
 
-	body := []byte(`{"username":"bob","amount":12.50}`)
+	body := []byte(`{"username":"bob","amount_cents":1250}`)
 	rr := httptest.NewRecorder()
 	h.SendMoney(rr, authReq(http.MethodPost, "/api/wallet/send", body, 7))
 
@@ -101,7 +101,7 @@ func TestWalletHandler_SendMoney_MapsMissingRecipientToNotFound(t *testing.T) {
 	svc := &fakeLedgerService{transferErr: coreledger.ErrRecipientNotFound}
 	h := &WalletHandler{Ledger: svc}
 
-	body := []byte(`{"username":"missing","amount":1}`)
+	body := []byte(`{"username":"missing","amount_cents":100}`)
 	rr := httptest.NewRecorder()
 	h.SendMoney(rr, authReq(http.MethodPost, "/api/wallet/send", body, 7))
 
@@ -117,11 +117,43 @@ func TestWalletHandler_SendMoney_MapsUnexpectedServiceErrorToInternalServerError
 	svc := &fakeLedgerService{transferErr: errors.New("db unavailable")}
 	h := &WalletHandler{Ledger: svc}
 
-	body := []byte(`{"username":"bob","amount":1}`)
+	body := []byte(`{"username":"bob","amount_cents":100}`)
 	rr := httptest.NewRecorder()
 	h.SendMoney(rr, authReq(http.MethodPost, "/api/wallet/send", body, 7))
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want %d", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestWalletHandler_SendMoney_LegacyAmountIsStillAccepted(t *testing.T) {
+	svc := &fakeLedgerService{}
+	h := &WalletHandler{Ledger: svc}
+
+	body := []byte(`{"username":"bob","amount":12.50}`)
+	rr := httptest.NewRecorder()
+	h.SendMoney(rr, authReq(http.MethodPost, "/api/wallet/send", body, 7))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rr.Code)
+	}
+	if svc.lastTransferCents != 1250 {
+		t.Fatalf("amount cents = %d, want 1250", svc.lastTransferCents)
+	}
+}
+
+func TestWalletHandler_SendMoney_RejectsMissingAmountFields(t *testing.T) {
+	svc := &fakeLedgerService{}
+	h := &WalletHandler{Ledger: svc}
+
+	body := []byte(`{"username":"bob"}`)
+	rr := httptest.NewRecorder()
+	h.SendMoney(rr, authReq(http.MethodPost, "/api/wallet/send", body, 7))
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("amount_cents is required")) {
+		t.Fatalf("expected amount_cents error body, got %q", rr.Body.String())
 	}
 }

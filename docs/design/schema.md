@@ -51,7 +51,7 @@ Why:
 
 Notes:
 - ciphertext storage is expected if E2EE is implemented
-- server should avoid storing plaintext content long-term if product direction requires privacy-first posture (`TODO: VERIFY`)
+- server stores plaintext only until E2EE rollout; migration target is ciphertext-at-rest with metadata minimization
 
 ## Target Marketplace Data Model (Planned)
 - `marketplace_listings`
@@ -62,7 +62,7 @@ Notes:
 
 Notes:
 - keep order/event state transitions append-only where possible
-- do not bake jurisdiction-specific compliance policy into schema too early (`TODO: VERIFY`)
+- jurisdiction-specific policy remains in rule engines/config, not in schema shape
 
 ## Target Escrow / Payment Adapter Data Model (Planned)
 - `escrow_holds`

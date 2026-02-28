@@ -54,8 +54,9 @@ func (h *WalletHandler) SendMoney(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Username string  `json:"username"`
-		Amount   float64 `json:"amount"`
+		Username    string   `json:"username"`
+		Amount      *float64 `json:"amount"`
+		AmountCents *int64   `json:"amount_cents"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -69,9 +70,27 @@ func (h *WalletHandler) SendMoney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	amountCents, err := store.DollarsToCents(req.Amount)
-	if err != nil {
-		web.JSONError(w, err, http.StatusBadRequest)
+	if req.Username == "" {
+		web.JSONError(w, errors.New("username is required"), http.StatusBadRequest)
+		return
+	}
+
+	var amountCents int64
+	if req.AmountCents != nil {
+		amountCents = *req.AmountCents
+		if amountCents <= 0 {
+			web.JSONError(w, errors.New("amount must be greater than zero"), http.StatusBadRequest)
+			return
+		}
+	} else if req.Amount != nil {
+		var err error
+		amountCents, err = store.DollarsToCents(*req.Amount)
+		if err != nil {
+			web.JSONError(w, err, http.StatusBadRequest)
+			return
+		}
+	} else {
+		web.JSONError(w, errors.New("amount_cents is required"), http.StatusBadRequest)
 		return
 	}
 

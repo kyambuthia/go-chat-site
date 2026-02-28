@@ -34,12 +34,12 @@ from:
 
 This prevents external provider assumptions from leaking into core domain logic.
 
-## Risk and Compliance Assumptions (TODO: VERIFY)
-- Is the platform custodial?
-- Are balances redeemable for fiat or only in-app credits?
-- What jurisdiction(s) apply to operator and users?
-- When are KYC/AML/sanctions checks required?
-- What dispute resolution and refund policies apply?
+## Risk and Compliance Assumptions (Baseline Decisions)
+- Platform model: custodial for in-app credits.
+- Balances: redeemable for fiat only through operator-controlled payout workflows.
+- Initial jurisdiction scope: US-only beta rollout.
+- KYC/AML/sanctions checks: required before fiat funding or payout.
+- Disputes/refunds: operator-mediated, with auditable event history.
 
 ## Engineering Rules for Payment-Related PRs
 - Transactions must be atomic or explicitly compensating.

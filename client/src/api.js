@@ -1,3 +1,5 @@
+import { buildApiURL, toAmountCents } from "./lib/runtimeConfig";
+
 let token = localStorage.getItem("token");
 let authErrorHandler = null;
 
@@ -20,7 +22,7 @@ export const setAuthErrorHandler = (handler) => {
 };
 
 const apiRequest = async (url, options = {}) => {
-  const response = await fetch(url, {
+  const response = await fetch(buildApiURL(url, { apiBaseURL: import.meta.env.VITE_API_BASE_URL }), {
     ...options,
     headers: {
       ...options.headers,
@@ -97,5 +99,5 @@ export const getWallet = () => apiRequest("/api/wallet");
 export const sendMoney = (username, amount) =>
   apiRequest("/api/wallet/send", {
     method: "POST",
-    body: JSON.stringify({ username, amount }),
+    body: JSON.stringify({ username, amount_cents: toAmountCents(amount) }),
   });

@@ -41,7 +41,7 @@ Goals:
 Deliverables:
 - device identity storage + APIs
 - key rotation and revocation semantics
-- protocol decision ADR (`TODO: VERIFY`: X3DH/Double Ratchet, MLS, or hybrid)
+- protocol decision ADR: X3DH + Double Ratchet for 1:1, MLS revisited for groups
 
 ## Phase 4: P2P Messaging Transport (Experimental Adapter)
 Goals:
@@ -70,7 +70,7 @@ Goals:
 
 Deliverables:
 - escrow event model
-- payment adapter interfaces + first implementation (`TODO: VERIFY`)
+- payment adapter interfaces + first implementation (Stripe Connect as first fiat rail candidate)
 - reconciliation jobs and operator tooling
 
 ## Exit Criteria for “Platform Beta” (Draft)

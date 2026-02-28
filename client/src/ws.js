@@ -1,6 +1,10 @@
+import { buildWebSocketURL } from "./lib/runtimeConfig";
+
 export function connectWebSocket(token) {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const wsUrl = `${protocol}://${window.location.host}/ws`;
+  const wsUrl = buildWebSocketURL({
+    wsBaseURL: import.meta.env.VITE_WS_URL,
+    apiBaseURL: import.meta.env.VITE_API_BASE_URL,
+  });
   const subprotocols = token ? [`bearer.${token}`] : undefined;
 
   const ws = new WebSocket(wsUrl, subprotocols);
