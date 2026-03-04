@@ -42,7 +42,7 @@ jobs:
           echo "Total coverage: ${total}%"
           awk "BEGIN {if (${total} < 65.0) exit 1}"
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: go-coverage
           path: |
