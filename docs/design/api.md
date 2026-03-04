@@ -26,6 +26,10 @@ Wallet compatibility routes (current behavior retained):
 Realtime:
 - `GET /ws` (WebSocket upgrade)
 
+Operational:
+- `GET /healthz`
+- `GET /readyz`
+
 ## Current WebSocket Protocol (Compatibility Contract)
 Supported message types:
 - `direct_message`

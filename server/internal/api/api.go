@@ -3,17 +3,18 @@ package api
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/httpapi"
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
-	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 )
 
-func NewAPI(dataStore store.APIStore, hub *ws.Hub) http.Handler {
+func NewAPI(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	// Backward-compatible shim while route/handler composition lives in adapters/httpapi.
 	return loggingMiddleware(httpapi.NewRouter(dataStore, hub))
 }
@@ -39,7 +40,20 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		log.Printf("request_id=%s method=%s path=%s status=%d duration_ms=%d", reqID, r.Method, r.URL.Path, rec.status, time.Since(start).Milliseconds())
+		entry := map[string]any{
+			"event":       "http_request",
+			"request_id":  reqID,
+			"method":      r.Method,
+			"path":        r.URL.Path,
+			"status":      rec.status,
+			"duration_ms": time.Since(start).Milliseconds(),
+		}
+		payload, err := json.Marshal(entry)
+		if err != nil {
+			log.Printf("request_id=%s method=%s path=%s status=%d duration_ms=%d", reqID, r.Method, r.URL.Path, rec.status, time.Since(start).Milliseconds())
+			return
+		}
+		log.Print(string(payload))
 	})
 }
 

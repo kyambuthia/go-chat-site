@@ -1,6 +1,6 @@
-import { buildApiURL, toAmountCents } from "./lib/runtimeConfig";
+import { buildApiURL, getViteEnv, toAmountCents } from "./lib/runtimeConfig.js";
 
-let token = localStorage.getItem("token");
+let token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
 let authErrorHandler = null;
 
 const getAuthHeaders = () => {
@@ -22,7 +22,7 @@ export const setAuthErrorHandler = (handler) => {
 };
 
 const apiRequest = async (url, options = {}) => {
-  const response = await fetch(buildApiURL(url, { apiBaseURL: import.meta.env.VITE_API_BASE_URL }), {
+  const response = await fetch(buildApiURL(url, { apiBaseURL: getViteEnv("VITE_API_BASE_URL") }), {
     ...options,
     headers: {
       ...options.headers,

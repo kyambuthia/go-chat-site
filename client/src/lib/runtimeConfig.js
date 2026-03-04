@@ -9,6 +9,16 @@ function withLeadingSlash(path) {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+export function getViteEnv(name) {
+  if (typeof import.meta !== "undefined" && import.meta?.env && name in import.meta.env) {
+    return import.meta.env[name];
+  }
+  if (typeof process !== "undefined" && process?.env && name in process.env) {
+    return process.env[name];
+  }
+  return "";
+}
+
 export function buildApiURL(path, opts = {}) {
   const apiBaseURL = opts.apiBaseURL ?? "";
   const cleanPath = withLeadingSlash(path);

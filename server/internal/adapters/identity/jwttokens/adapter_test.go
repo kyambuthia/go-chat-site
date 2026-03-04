@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	coreid "github.com/kyambuthia/go-chat-site/server/internal/core/identity"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	coreid "github.com/kyambuthia/go-chat-site/server/internal/core/identity"
 )
 
 func TestAdapter_IssueAndValidateToken(t *testing.T) {

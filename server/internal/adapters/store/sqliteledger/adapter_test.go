@@ -10,12 +10,15 @@ import (
 )
 
 type fakeWalletStore struct {
-	wallet    *store.Wallet
-	user      *store.User
-	getErr    error
-	userErr   error
-	sendErr   error
-	lastSend  struct{ from, to int; cents int64 }
+	wallet   *store.Wallet
+	user     *store.User
+	getErr   error
+	userErr  error
+	sendErr  error
+	lastSend struct {
+		from, to int
+		cents    int64
+	}
 }
 
 func (f *fakeWalletStore) GetWallet(userID int) (*store.Wallet, error) {
@@ -35,7 +38,10 @@ func (f *fakeWalletStore) GetUserByUsername(username string) (*store.User, error
 }
 
 func (f *fakeWalletStore) SendMoney(senderID, recipientID int, amountCents int64) error {
-	f.lastSend = struct{ from, to int; cents int64 }{from: senderID, to: recipientID, cents: amountCents}
+	f.lastSend = struct {
+		from, to int
+		cents    int64
+	}{from: senderID, to: recipientID, cents: amountCents}
 	return f.sendErr
 }
 

@@ -5,6 +5,7 @@ This project is transitioning from a demo toward a platform architecture. Securi
 
 Implemented in current codebase:
 - Request ID correlation in API logs (`X-Request-ID` propagation/generation)
+- Structured JSON HTTP request logs with request IDs
 - WS origin allowlist (env-driven, localhost-safe defaults)
 - Lightweight rate limiting on `/api/login` and `/ws` handshake
 - JWT-based authenticated API and WS sessions
@@ -65,3 +66,8 @@ Implemented in current codebase:
 - High-risk changes require tests for failure/abuse cases, not just success cases.
 - Document trust boundaries and attack assumptions in ADRs.
 - Prefer reversible migrations for auth, ledger, and messaging protocols.
+
+## CI Security Automation
+- `govulncheck` for Go code/dependencies
+- `npm audit` for client dependencies
+- `gitleaks` for secret scanning

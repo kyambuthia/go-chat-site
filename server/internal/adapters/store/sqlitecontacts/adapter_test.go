@@ -41,7 +41,7 @@ func (f *fakeDeps) GetUserByUsername(username string) (*store.User, error) {
 	}
 	return f.user, nil
 }
-func (f *fakeDeps) AddContact(userID, contactID int) error { _ = userID; _ = contactID; return nil }
+func (f *fakeDeps) AddContact(userID, contactID int) error    { _ = userID; _ = contactID; return nil }
 func (f *fakeDeps) RemoveContact(userID, contactID int) error { _ = userID; _ = contactID; return nil }
 func (f *fakeDeps) CreateInvite(inviterID, inviteeID int) error {
 	f.lastCreateFrom, f.lastCreateTo = inviterID, inviteeID

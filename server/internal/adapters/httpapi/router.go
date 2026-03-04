@@ -46,6 +46,9 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	messagesHandler := &MessagesHandler{Messaging: wiring.MessagingPersistence, ReceiptTransport: hub}
 	meHandler := &MeHandler{Identity: wiring.Identity}
 
+	mux.HandleFunc("/healthz", healthzHandler)
+	mux.HandleFunc("/readyz", readyzHandler(readinessCheck(dataStore)))
+
 	mux.HandleFunc("/api/register", authHandler.Register)
 	mux.Handle("/api/login", loginLimiter(http.HandlerFunc(authHandler.Login)))
 

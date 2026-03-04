@@ -10,9 +10,9 @@ import (
 )
 
 type fakeMeStore struct {
-	user    *store.User
-	err     error
-	lastID  int
+	user   *store.User
+	err    error
+	lastID int
 }
 
 func (f *fakeMeStore) GetUserByID(id int) (*store.User, error) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildApiURL, buildWebSocketURL, toAmountCents } from "./runtimeConfig.js";
+import { buildApiURL, buildWebSocketURL, getViteEnv, toAmountCents } from "./runtimeConfig.js";
 
 test("buildApiURL returns relative path when no base url is set", () => {
   assert.equal(buildApiURL("/api/me"), "/api/me");
@@ -32,4 +32,9 @@ test("buildWebSocketURL derives websocket url from api base url", () => {
 test("buildWebSocketURL falls back to browser location", () => {
   const wsURL = buildWebSocketURL({ locationProtocol: "https:", locationHost: "chat.example.com" });
   assert.equal(wsURL, "wss://chat.example.com/ws");
+});
+
+test("getViteEnv falls back to process.env outside vite runtime", () => {
+  process.env.RUNTIME_CONFIG_TEST_KEY = "test-value";
+  assert.equal(getViteEnv("RUNTIME_CONFIG_TEST_KEY"), "test-value");
 });

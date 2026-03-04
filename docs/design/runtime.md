@@ -15,7 +15,11 @@ flowchart LR
 2. `adapters/httpapi` handler validates method/input.
 3. Auth middleware validates JWT where required.
 4. Handler calls SQLite-backed store methods.
-5. API logging middleware emits request log with `request_id`.
+5. API logging middleware emits structured JSON request logs with `request_id`.
+
+### Ops Flow
+- `GET /healthz` is a liveness probe.
+- `GET /readyz` verifies DB reachability + migration metadata table presence.
 
 ### WebSocket Flow
 1. Client connects to `/ws`.

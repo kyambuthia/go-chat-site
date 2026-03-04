@@ -3,13 +3,13 @@
 ## Install
 
 ```bash
-bun install
+npm ci
 ```
 
 ## Run
 
 ```bash
-bun run dev
+npm run dev
 ```
 
 The app expects API/WS routes proxied by Vite (`/api`, `/ws`).

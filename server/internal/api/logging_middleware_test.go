@@ -36,7 +36,7 @@ func TestLoggingMiddleware_AssignsAndLogsRequestID(t *testing.T) {
 		t.Fatal("expected response X-Request-ID header")
 	}
 
-	if !strings.Contains(logBuf.String(), "request_id=") {
+	if !strings.Contains(logBuf.String(), "\"request_id\"") {
 		t.Fatalf("expected request_id in logs, got %q", logBuf.String())
 	}
 }

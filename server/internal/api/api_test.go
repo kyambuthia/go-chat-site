@@ -9,10 +9,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
-	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 )
 
 func TestAuthHandlers(t *testing.T) {
@@ -30,7 +30,7 @@ func TestAuthHandlers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 
@@ -171,7 +171,7 @@ func TestContactsAndInvitesRoutes_Compatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 
@@ -301,7 +301,7 @@ func TestMeAndWalletRoutes_Compatibility(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 	apiHandler := NewAPI(s, hub)
@@ -435,7 +435,7 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 	apiHandler := NewAPI(s, hub)
@@ -724,7 +724,7 @@ func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 	apiHandler := NewAPI(s, hub)
@@ -830,7 +830,7 @@ func TestMessagesDeliveredRoute_AdditiveReceiptEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 	apiHandler := NewAPI(s, hub)

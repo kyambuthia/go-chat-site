@@ -27,11 +27,15 @@ func newMessagingStore(t *testing.T) *store.SqliteStore {
 
 func seedUser(t *testing.T, s *store.SqliteStore, username string) int {
 	t.Helper()
-	id, err := s.CreateUser(username, "password123")
+	res, err := s.DB.Exec(`INSERT INTO users (username, password_hash) VALUES (?, ?)`, username, "test-hash")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return id
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return int(id)
 }
 
 func TestAdapter_SaveDirectMessage_AndListInbox(t *testing.T) {

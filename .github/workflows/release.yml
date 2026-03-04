@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Build backend
+        run: |
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -o dist/go-chat-site-linux-amd64 ./server/cmd/main.go
+
+      - name: Build frontend
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package frontend artifact
+        run: |
+          tar -czf dist/client-dist.tar.gz -C client dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/go-chat-site-linux-amd64
+            dist/client-dist.tar.gz
+          generate_release_notes: true

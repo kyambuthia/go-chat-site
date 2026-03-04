@@ -1,26 +1,77 @@
 name: CI
 
 on:
+  pull_request:
   push:
     branches:
       - main
 
 jobs:
-  go-test-and-build:
+  go-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
-      - run: go test ./...
-      - run: go build ./...
+          go-version-file: go.mod
+      - name: Check gofmt
+        run: |
+          fmt_out=$(gofmt -l $(find server -name '*.go' -type f))
+          if [ -n "$fmt_out" ]; then
+            echo "gofmt failed for:";
+            echo "$fmt_out";
+            exit 1;
+          fi
+      - name: Go vet
+        run: go vet ./server/...
 
-  bun-test-and-build:
+  go-test-coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: oven-sh/setup-bun@v1
-      - run: cd client && bun install
-      - run: cd client && bun test
-      - run: cd client && bun run build
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run go tests with coverage
+        run: |
+          go test ./server/... -coverprofile=coverage.out
+          go tool cover -func=coverage.out | tee coverage.txt
+      - name: Enforce coverage threshold
+        run: |
+          total=$(awk '/^total:/ {print $3}' coverage.txt | tr -d '%')
+          echo "Total coverage: ${total}%"
+          awk "BEGIN {if (${total} < 65.0) exit 1}"
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            coverage.out
+            coverage.txt
+
+  go-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./server/...
+
+  client-quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

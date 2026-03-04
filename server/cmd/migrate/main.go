@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {

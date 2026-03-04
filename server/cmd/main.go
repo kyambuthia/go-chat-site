@@ -11,11 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/adapters/transport/wsrelay"
 	"github.com/kyambuthia/go-chat-site/server/internal/api"
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	"github.com/kyambuthia/go-chat-site/server/internal/health"
 	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
-	"github.com/kyambuthia/go-chat-site/server/internal/ws"
 )
 
 func main() {
@@ -47,8 +48,14 @@ func main() {
 	if err := migrate.RunMigrations(dbStore.DB, migrationsPath); err != nil {
 		log.Fatal("migration failed: ", err)
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := health.CheckDBReady(ctx, dbStore.DB); err != nil {
+		cancel()
+		log.Fatal("startup readiness check failed: ", err)
+	}
+	cancel()
 
-	hub := ws.NewHub()
+	hub := wsrelay.NewHub()
 	go hub.Run()
 	defer hub.Shutdown()
 
