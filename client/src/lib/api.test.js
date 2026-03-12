@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getContacts, sendMoney, setAuthErrorHandler, setToken } from "../api.js";
+import { addContact, getContacts, removeContact, sendMoney, setAuthErrorHandler, setToken } from "../api.js";
 
 function jsonResponse(status, payload, headers = {}) {
   return {
@@ -52,6 +52,41 @@ test("sendMoney sends amount as integer cents", async () => {
   const parsed = JSON.parse(requestBody);
   assert.equal(parsed.username, "bob");
   assert.equal(parsed.amount_cents, 1234);
+});
+
+test("addContact posts username to contacts endpoint", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-add");
+
+  let capturedURL = "";
+  let capturedOptions = null;
+  global.fetch = async (url, options) => {
+    capturedURL = url;
+    capturedOptions = options;
+    return jsonResponse(201, null, { "content-length": "0" });
+  };
+
+  await addContact("bob");
+
+  assert.equal(capturedURL, "http://localhost:8080/api/contacts");
+  assert.equal(capturedOptions.method, "POST");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { username: "bob" });
+});
+
+test("removeContact deletes by contact id", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-remove");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(200, null, { "content-length": "0" });
+  };
+
+  await removeContact(42);
+
+  assert.equal(capturedOptions.method, "DELETE");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { contact_id: 42 });
 });
 
 test("invalid token response triggers auth error handler", async () => {

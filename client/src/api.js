@@ -72,6 +72,18 @@ export const loginUser = async (username, password) => {
 
 export const getContacts = () => apiRequest("/api/contacts");
 
+export const addContact = (username) =>
+  apiRequest("/api/contacts", {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+
+export const removeContact = (contactID) =>
+  apiRequest("/api/contacts", {
+    method: "DELETE",
+    body: JSON.stringify({ contact_id: contactID }),
+  });
+
 export const sendInvite = (username) =>
   apiRequest("/api/invites/send", {
     method: "POST",

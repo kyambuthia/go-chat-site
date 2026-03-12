@@ -162,6 +162,10 @@ func TestContactsAndInvitesRoutes_Compatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	charlieID, err := s.CreateUser("charlie", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
 	aliceToken, err := auth.GenerateToken(aliceID)
 	if err != nil {
 		t.Fatal(err)
@@ -261,6 +265,71 @@ func TestContactsAndInvitesRoutes_Compatibility(t *testing.T) {
 		}
 		if _, ok := contacts[0]["avatar_url"]; !ok {
 			t.Fatal("expected avatar_url field")
+		}
+	})
+
+	t.Run("direct add and remove contact routes remain reachable", func(t *testing.T) {
+		reqBody, _ := json.Marshal(map[string]string{"username": "charlie"})
+		req := httptest.NewRequest(http.MethodPost, "/api/contacts", bytes.NewReader(reqBody))
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusCreated {
+			t.Fatalf("add contact status = %d, want %d; body=%s", rr.Code, http.StatusCreated, rr.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/api/contacts", nil)
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		rr = httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("list contacts status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
+		}
+
+		var contacts []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &contacts); err != nil {
+			t.Fatalf("unmarshal contacts: %v", err)
+		}
+		if len(contacts) != 2 {
+			t.Fatalf("contacts len = %d, want 2", len(contacts))
+		}
+
+		deleteBody, _ := json.Marshal(map[string]int{"contact_id": charlieID})
+		req = httptest.NewRequest(http.MethodDelete, "/api/contacts", bytes.NewReader(deleteBody))
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr = httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("remove contact status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
+		}
+
+		req = httptest.NewRequest(http.MethodGet, "/api/contacts", nil)
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		rr = httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("list contacts status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
+		}
+
+		contacts = nil
+		if err := json.Unmarshal(rr.Body.Bytes(), &contacts); err != nil {
+			t.Fatalf("unmarshal contacts after delete: %v", err)
+		}
+		if len(contacts) != 1 {
+			t.Fatalf("contacts len after delete = %d, want 1", len(contacts))
+		}
+		if got := int(contacts[0]["id"].(float64)); got != bobID {
+			t.Fatalf("remaining contact id = %d, want %d", got, bobID)
 		}
 	})
 }

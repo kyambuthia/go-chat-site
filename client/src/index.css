@@ -699,6 +699,14 @@ button.accept {
   margin-bottom: var(--space-3);
 }
 
+.contacts-actions {
+  margin-bottom: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  background: #fff;
+}
+
 .search-wrap {
   display: flex;
   align-items: center;
@@ -735,6 +743,18 @@ button.accept {
   font-size: 0.75rem;
 }
 
+.contact-item-actions {
+  margin-left: auto;
+}
+
+.contact-action-btn {
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+  padding: 8px 12px;
+  font-size: 0.76rem;
+}
+
 .unread-pill {
   margin-left: auto;
   min-width: 20px;
@@ -765,6 +785,25 @@ button.accept {
 
 .invite {
   margin-top: var(--space-5);
+}
+
+.invite.invite-compact {
+  margin-top: 0;
+}
+
+.invite.invite-compact form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.invite.invite-compact .form-group {
+  margin-bottom: 0;
+}
+
+.contacts-error {
+  margin-top: var(--space-2);
 }
 
 .account-page .user-card,
@@ -950,6 +989,10 @@ button.accept {
   }
 
   .request-payment-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .invite.invite-compact form {
     grid-template-columns: 1fr;
   }
 

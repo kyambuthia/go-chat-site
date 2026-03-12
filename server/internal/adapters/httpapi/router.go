@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/kyambuthia/go-chat-site/server/internal/config"
 	coremsg "github.com/kyambuthia/go-chat-site/server/internal/core/messaging"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
+	"github.com/kyambuthia/go-chat-site/server/internal/web"
 )
 
 // NewRouter builds the mux-based HTTP+WS adapter while preserving current route paths.
@@ -52,7 +54,18 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.HandleFunc("/api/register", authHandler.Register)
 	mux.Handle("/api/login", loginLimiter(http.HandlerFunc(authHandler.Login)))
 
-	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(contactsHandler.GetContacts)))
+	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			contactsHandler.GetContacts(w, r)
+		case http.MethodPost:
+			contactsHandler.AddContact(w, r)
+		case http.MethodDelete:
+			contactsHandler.RemoveContact(w, r)
+		default:
+			web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		}
+	})))
 
 	mux.Handle("/api/invites", auth.Middleware(http.HandlerFunc(inviteHandler.GetInvites)))
 	mux.Handle("/api/invites/send", auth.Middleware(http.HandlerFunc(inviteHandler.SendInvite)))

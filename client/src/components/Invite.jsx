@@ -1,31 +1,36 @@
 import { useState } from "react";
 import { sendInvite } from "../api";
 
-export default function Invite() {
+export default function Invite({ compact = false, onInviteSent = null }) {
   const [username, setUsername] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState(null);
+  const inputID = compact ? "invite-username-compact" : "invite-username";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setMessage(null);
+    const normalizedUsername = username.trim();
     try {
-      await sendInvite(username);
-      setMessage(`Invite sent to ${username}`);
+      await sendInvite(normalizedUsername);
+      setMessage(`Invite sent to ${normalizedUsername}`);
       setUsername("");
+      if (typeof onInviteSent === "function") {
+        onInviteSent(normalizedUsername);
+      }
     } catch (err) {
       setError(err.message);
     }
   };
 
   return (
-    <div className="invite">
+    <div className={`invite ${compact ? "invite-compact" : ""}`}>
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label htmlFor="username">Username</label>
+          <label htmlFor={inputID}>{compact ? "Invite by username" : "Username"}</label>
           <input
-            id="username"
+            id={inputID}
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -33,7 +38,7 @@ export default function Invite() {
             required
           />
         </div>
-        <button type="submit">Send Invite</button>
+        <button type="submit" disabled={!username.trim()}>{compact ? "Invite" : "Send Invite"}</button>
       </form>
       {message && <p className="success-message">{message}</p>}
       {error && <p className="error-message">{error}</p>}
