@@ -17,6 +17,7 @@ const (
 	KindMessageAck       MessageKind = "message_ack"
 	KindMessageDelivered MessageKind = "message_delivered"
 	KindMessageRead      MessageKind = "message_read"
+	KindPresenceState    MessageKind = "presence_state"
 	KindUserOnline       MessageKind = "user_online"
 	KindUserOffline      MessageKind = "user_offline"
 	KindError            MessageKind = "error"
@@ -24,11 +25,12 @@ const (
 
 // Message is the normalized real-time payload envelope for the messaging domain.
 type Message struct {
-	ID   int64       `json:"id,omitempty"`
-	Type MessageKind `json:"type"`
-	From string      `json:"from,omitempty"`
-	To   string      `json:"to,omitempty"`
-	Body string      `json:"body,omitempty"`
+	ID    int64       `json:"id,omitempty"`
+	Type  MessageKind `json:"type"`
+	From  string      `json:"from,omitempty"`
+	To    string      `json:"to,omitempty"`
+	Body  string      `json:"body,omitempty"`
+	Users []string    `json:"users,omitempty"`
 }
 
 // Thread models a future conversation primitive (DM thread, group thread, marketplace order thread).

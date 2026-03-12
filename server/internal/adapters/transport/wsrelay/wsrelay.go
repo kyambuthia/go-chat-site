@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +34,7 @@ type client struct {
 
 type Hub struct {
 	mu              sync.RWMutex
-	clients         map[int]*client
+	clients         map[int]map[*client]struct{}
 	ctx             context.Context
 	cancel          context.CancelFunc
 	deliveryService coremsg.Service
@@ -42,7 +43,7 @@ type Hub struct {
 func NewHub() *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
 	h := &Hub{
-		clients: make(map[int]*client),
+		clients: make(map[int]map[*client]struct{}),
 		ctx:     ctx,
 		cancel:  cancel,
 	}
@@ -78,10 +79,12 @@ func (h *Hub) Run() {
 func (h *Hub) Shutdown() {
 	h.cancel()
 	h.mu.Lock()
-	for _, c := range h.clients {
-		c.close()
+	for _, userClients := range h.clients {
+		for c := range userClients {
+			c.close()
+		}
 	}
-	h.clients = map[int]*client{}
+	h.clients = map[int]map[*client]struct{}{}
 	h.mu.Unlock()
 }
 
@@ -89,57 +92,113 @@ func (h *Hub) AddClient(c *client) error {
 	if c == nil {
 		return errors.New("nil client")
 	}
+
 	h.mu.Lock()
-	if existing, ok := h.clients[c.userID]; ok {
-		existing.close()
+	userClients, ok := h.clients[c.userID]
+	if !ok {
+		userClients = make(map[*client]struct{})
+		h.clients[c.userID] = userClients
 	}
-	h.clients[c.userID] = c
+	isFirstSession := len(userClients) == 0
+	userClients[c] = struct{}{}
+	onlineUsers := h.onlineUsernamesExceptLocked(c.userID)
 	h.mu.Unlock()
 
-	go h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOnline, From: c.username})
+	c.trySend(Message{Type: coremsg.KindPresenceState, Users: onlineUsers})
+	if isFirstSession {
+		go h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOnline, From: c.username})
+	}
 	return nil
 }
 
-func (h *Hub) RemoveClient(userID int) {
+func (h *Hub) RemoveClient(c *client) {
+	if c == nil {
+		return
+	}
+
 	h.mu.Lock()
-	client, ok := h.clients[userID]
-	if ok {
-		delete(h.clients, userID)
+	userClients, ok := h.clients[c.userID]
+	if !ok {
+		h.mu.Unlock()
+		return
+	}
+	_, removed := userClients[c]
+	if removed {
+		delete(userClients, c)
+	}
+	isLastSession := removed && len(userClients) == 0
+	if isLastSession {
+		delete(h.clients, c.userID)
 	}
 	h.mu.Unlock()
 
-	if ok {
-		client.close()
-		go h.broadcastExcept(userID, Message{Type: coremsg.KindUserOffline, From: client.username})
+	if !removed {
+		return
+	}
+	c.close()
+	if isLastSession {
+		go h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOffline, From: c.username})
 	}
 }
 
 func (h *Hub) SendDirect(toUserID int, msg Message) bool {
 	h.mu.RLock()
-	c, ok := h.clients[toUserID]
+	userClients, ok := h.clients[toUserID]
+	clients := make([]*client, 0, len(userClients))
+	if ok {
+		for c := range userClients {
+			clients = append(clients, c)
+		}
+	}
 	h.mu.RUnlock()
 	if !ok {
 		return false
 	}
-	return c.sendWithTimeout(msg, 500*time.Millisecond)
+
+	delivered := false
+	for _, c := range clients {
+		if c.sendWithTimeout(msg, 500*time.Millisecond) {
+			delivered = true
+		}
+	}
+	return delivered
 }
 
 func (h *Hub) broadcastExcept(excludedUserID int, msg Message) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for userID, c := range h.clients {
+	clients := make([]*client, 0)
+	for userID, userClients := range h.clients {
 		if userID == excludedUserID {
 			continue
 		}
-		select {
-		case c.send <- msg:
-		default:
+		for c := range userClients {
+			clients = append(clients, c)
 		}
+	}
+	h.mu.RUnlock()
+
+	for _, c := range clients {
+		_ = c.sendWithTimeout(msg, 0)
 	}
 }
 
+func (h *Hub) onlineUsernamesExceptLocked(excludedUserID int) []string {
+	users := make([]string, 0, len(h.clients))
+	for userID, userClients := range h.clients {
+		if userID == excludedUserID || len(userClients) == 0 {
+			continue
+		}
+		for c := range userClients {
+			users = append(users, c.username)
+			break
+		}
+	}
+	sort.Strings(users)
+	return users
+}
+
 func (c *client) readLoop() {
-	defer c.hub.RemoveClient(c.userID)
+	defer c.hub.RemoveClient(c)
 
 	c.conn.SetReadLimit(1024)
 	c.conn.SetReadDeadline(time.Now().Add(60 * time.Second))

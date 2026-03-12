@@ -9,6 +9,8 @@ import { ChatBubbleIcon, PersonIcon, GearIcon } from "@radix-ui/react-icons";
 
 import { connectWebSocket } from "./ws";
 
+const normalizeOnlineUsers = (users = []) => [...new Set(users.filter(Boolean))].sort();
+
 function App() {
   const [ws, setWs] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -74,29 +76,44 @@ function App() {
       }
 
       setWsStatus("connecting");
+      setOnlineUsers([]);
       const token = localStorage.getItem("token");
       const socket = connectWebSocket(token);
       activeSocketRef.current = socket;
       setWs(socket);
 
       socket.onopen = () => {
+        if (activeSocketRef.current !== socket) {
+          return;
+        }
         reconnectAttemptRef.current = 0;
         setWsStatus("online");
       };
 
       socket.onclose = () => {
-        if (cancelled) {
+        if (cancelled || activeSocketRef.current !== socket) {
           return;
         }
+        activeSocketRef.current = null;
+        setWs(null);
         setWsStatus("offline");
+        setOnlineUsers([]);
         scheduleReconnect();
       };
 
       socket.onerror = () => {
+        if (activeSocketRef.current !== socket) {
+          return;
+        }
         setWsStatus("offline");
+        setOnlineUsers([]);
       };
 
       socket.onmessage = (event) => {
+        if (activeSocketRef.current !== socket) {
+          return;
+        }
+
         let message;
         try {
           message = JSON.parse(event.data);
@@ -104,10 +121,12 @@ function App() {
           console.error("Received invalid WebSocket payload:", err);
           return;
         }
+        if (message.type === "presence_state") {
+          setOnlineUsers(normalizeOnlineUsers(message.users || []));
+          return;
+        }
         if (message.type === "user_online") {
-          setOnlineUsers((prevOnlineUsers) =>
-            prevOnlineUsers.includes(message.from) ? prevOnlineUsers : [...prevOnlineUsers, message.from]
-          );
+          setOnlineUsers((prevOnlineUsers) => normalizeOnlineUsers([...prevOnlineUsers, message.from]));
           return;
         }
         if (message.type === "user_offline") {

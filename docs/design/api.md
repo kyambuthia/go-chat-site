@@ -36,6 +36,7 @@ Operational:
 Supported message types:
 - `direct_message`
 - `message_ack`
+- `presence_state`
 - `user_online`
 - `user_offline`
 - `error` (server-generated for invalid recipient/offline recipient)
@@ -45,6 +46,7 @@ Auth transport:
 - WebSocket subprotocol `bearer.<token>`
 
 Current delivery behavior:
+- new connections receive `presence_state` with the currently online usernames
 - `direct_message` to online user is forwarded
 - sender receives `message_ack` on successful relay
 - if recipient offline, sender receives `error` and **no ack**
