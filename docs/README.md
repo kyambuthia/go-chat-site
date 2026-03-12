@@ -16,6 +16,7 @@ This repository is evolving from a centralized chat + wallet demo into a securit
 - `docs/design/runtime.md`: runtime flows (HTTP, WS relay today; P2P later)
 - `docs/design/security.md`: security scaffolding, threat model, and hardening plan
 - `docs/design/roadmap.md`: phased migration plan toward P2P + marketplace + payments
+- `docs/design/implementation-roadmap.md`: concrete feature roadmap and delivery order from the current repo state
 - `docs/design/repo-improvements-roadmap.md`: phased engineering roadmap for repo quality, CI, and maintainability
 - `docs/design/marketplace-payments.md`: ledger/escrow/payment-rail strategy and assumptions
 
