@@ -3,6 +3,7 @@ package messaging
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 type fakeTransport struct {
@@ -246,7 +247,7 @@ func (f *fakePersistenceService) GetMessageForRecipient(ctx context.Context, rec
 
 func TestDurableRelayService_SendDirect_PersistsAndMarksDeliveredOnSuccess(t *testing.T) {
 	tp := &fakeTransport{ok: true}
-	ps := &fakePersistenceService{stored: StoredMessage{ID: 123}}
+	ps := &fakePersistenceService{stored: StoredMessage{ID: 123, CreatedAt: time.Unix(1700000000, 0).UTC()}}
 	svc := NewDurableRelayService(tp, ps)
 
 	receipt, err := svc.SendDirect(context.Background(), DirectSendRequest{
@@ -270,6 +271,9 @@ func TestDurableRelayService_SendDirect_PersistsAndMarksDeliveredOnSuccess(t *te
 	}
 	if ps.lastMarkID != 123 {
 		t.Fatalf("mark delivered id = %d, want 123", ps.lastMarkID)
+	}
+	if tp.lastMsg.ID != 123 {
+		t.Fatalf("transport message id = %d, want 123", tp.lastMsg.ID)
 	}
 }
 

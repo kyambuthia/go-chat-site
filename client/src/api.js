@@ -108,6 +108,45 @@ export const getMe = () => apiRequest("/api/me");
 
 export const getWallet = () => apiRequest("/api/wallet");
 
+const buildQueryString = (params = {}) => {
+  const query = new URLSearchParams();
+
+  if (params.limit) {
+    query.set("limit", String(params.limit));
+  }
+  if (params.beforeID) {
+    query.set("before_id", String(params.beforeID));
+  }
+  if (params.afterID) {
+    query.set("after_id", String(params.afterID));
+  }
+  if (params.withUserID) {
+    query.set("with_user_id", String(params.withUserID));
+  }
+  if (params.unreadOnly) {
+    query.set("unread_only", "true");
+  }
+
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+};
+
+export const getInbox = (params = {}) => apiRequest(`/api/messages/inbox${buildQueryString(params)}`);
+
+export const getOutbox = (params = {}) => apiRequest(`/api/messages/outbox${buildQueryString(params)}`);
+
+export const markMessageRead = (messageID) =>
+  apiRequest("/api/messages/read", {
+    method: "POST",
+    body: JSON.stringify({ message_id: messageID }),
+  });
+
+export const markMessageDelivered = (messageID) =>
+  apiRequest("/api/messages/delivered", {
+    method: "POST",
+    body: JSON.stringify({ message_id: messageID }),
+  });
+
 export const sendMoney = (username, amount) =>
   apiRequest("/api/wallet/send", {
     method: "POST",

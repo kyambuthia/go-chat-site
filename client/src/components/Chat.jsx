@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { getContacts, sendMoney } from "../api";
+import { getContacts, getInbox, getOutbox, markMessageDelivered, markMessageRead, sendMoney } from "../api";
 import {
   CheckIcon,
   PaperPlaneIcon,
@@ -142,6 +142,76 @@ function updateThreadPaymentRequest(messages, requestId, patch) {
   });
 }
 
+function dedupeMessages(messages) {
+  const seen = new Set();
+  const deduped = [];
+
+  for (const message of messages) {
+    const identity = message.serverID
+      ? `server:${message.serverID}`
+      : message.clientID
+        ? `client:${message.clientID}`
+        : `${message.sent ? "sent" : "received"}:${message.from || ""}:${message.body || ""}:${message.createdAt || ""}`;
+
+    if (seen.has(identity)) {
+      continue;
+    }
+
+    seen.add(identity);
+    deduped.push(message);
+  }
+
+  return deduped;
+}
+
+function sortMessages(messages) {
+  return [...messages].sort((left, right) => {
+    const leftTime = Date.parse(left.createdAt || "");
+    const rightTime = Date.parse(right.createdAt || "");
+
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    const leftID = Number(left.serverID || left.id || 0);
+    const rightID = Number(right.serverID || right.id || 0);
+    return leftID - rightID;
+  });
+}
+
+function buildThreadHistory(contact, inboxMessages, outboxMessages) {
+  const received = inboxMessages
+    .filter((message) => Number(message.from_user_id) === Number(contact.id))
+    .map((message) => addPaymentRequestMetadata({
+      id: message.id,
+      serverID: message.id,
+      from: contact.username,
+      body: message.body,
+      sent: false,
+      delivered: Boolean(message.delivered_at),
+      read: Boolean(message.read_at),
+      createdAt: message.created_at,
+    }));
+
+  const sent = outboxMessages
+    .filter((message) => Number(message.to_user_id) === Number(contact.id))
+    .map((message) => addPaymentRequestMetadata({
+      id: message.id,
+      serverID: message.id,
+      from: "Me",
+      to: contact.username,
+      body: message.body,
+      sent: true,
+      delivered: Boolean(message.delivered_at),
+      read: Boolean(message.read_at),
+      createdAt: message.created_at,
+      failed: !message.delivered_at,
+      errorMessage: "",
+    }));
+
+  return sortMessages(dedupeMessages([...received, ...sent]));
+}
+
 function ChatWindow({
   ws,
   selectedContact,
@@ -259,7 +329,7 @@ function ChatWindow({
       <div className="chat-header compact">
         <button onClick={onBack} className="back-button" aria-label="Back to contacts">←</button>
         <Avatar className={`avatar-placeholder ${isOnline ? "online" : ""}`}>
-          <AvatarImage src="" alt="" />
+          <AvatarImage src={selectedContact.avatar_url || ""} alt={selectedContact.display_name || selectedContact.username} />
           <AvatarFallback><PersonIcon width="20" height="20" /></AvatarFallback>
         </Avatar>
         <div className="chat-header-meta">
@@ -337,8 +407,21 @@ function ChatWindow({
 
               <div className="message-meta">
                 <span className="message-time">{formatTime(msg.createdAt)}</span>
-                {msg.sent && msg.delivered && <span className="message-status-icon"><CheckIcon /></span>}
+                {msg.sent && (
+                  <>
+                    {msg.read ? (
+                      <span className="message-status-label">Read</span>
+                    ) : msg.delivered ? (
+                      <span className="message-status-icon" title="Delivered"><CheckIcon /></span>
+                    ) : msg.failed ? (
+                      <span className="message-status-label is-error" title={msg.errorMessage || "Not delivered"}>Not delivered</span>
+                    ) : (
+                      <span className="message-status-label">Sending…</span>
+                    )}
+                  </>
+                )}
               </div>
+              {msg.sent && msg.errorMessage && <p className="message-inline-error">{msg.errorMessage}</p>}
             </div>
           );
         })}
@@ -460,18 +543,88 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     const fetchContacts = async () => {
       try {
         setLoading(true);
-        const response = await getContacts();
-        setContacts(response || []);
+        setError(null);
+        const [contactsResponse, unreadResponse] = await Promise.all([
+          getContacts(),
+          getInbox({ unreadOnly: true, limit: 200 }),
+        ]);
+        const nextContacts = contactsResponse || [];
+        const contactsByID = new Map(nextContacts.map((contact) => [Number(contact.id), contact.username]));
+        const nextUnreadByUser = {};
+
+        for (const message of unreadResponse || []) {
+          const username = contactsByID.get(Number(message.from_user_id));
+          if (!username) {
+            continue;
+          }
+          nextUnreadByUser[username] = (nextUnreadByUser[username] || 0) + 1;
+        }
+
+        setContacts(nextContacts);
+        setUnreadByUser(nextUnreadByUser);
       } catch (err) {
         console.error("Failed to fetch contacts:", err);
         setError(err.message);
         setContacts([]);
+        setUnreadByUser({});
       } finally {
         setLoading(false);
       }
     };
     fetchContacts();
   }, []);
+
+  useEffect(() => {
+    if (!selectedContact) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadThreadHistory = async () => {
+      try {
+        const [inboxMessages, outboxMessages] = await Promise.all([
+          getInbox({ withUserID: selectedContact.id, limit: 100 }),
+          getOutbox({ limit: 200 }),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextThread = buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []);
+
+        setThreads((prev) => ({
+          ...prev,
+          [selectedContact.username]: nextThread,
+        }));
+
+        const unreadServerIDs = nextThread
+          .filter((message) => !message.sent && message.serverID && !message.read)
+          .map((message) => message.serverID);
+
+        if (unreadServerIDs.length > 0) {
+          setThreads((prev) => ({
+            ...prev,
+            [selectedContact.username]: (prev[selectedContact.username] || []).map((message) =>
+              unreadServerIDs.includes(message.serverID) ? { ...message, read: true, delivered: true } : message
+            ),
+          }));
+          await Promise.allSettled(unreadServerIDs.map((messageID) => markMessageRead(messageID)));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load thread history:", err);
+        }
+      }
+    };
+
+    loadThreadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedContact]);
 
   useEffect(() => {
     if (!lastWsMessage) {
@@ -483,11 +636,87 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         const next = { ...prev };
         Object.keys(next).forEach((username) => {
           next[username] = next[username].map((msg) =>
-            msg.id === lastWsMessage.id ? { ...msg, delivered: true } : msg
+            msg.clientID === lastWsMessage.id || (msg.id === lastWsMessage.id && !msg.serverID)
+              ? { ...msg, delivered: true, failed: false, errorMessage: "" }
+              : msg
           );
         });
         return next;
       });
+
+      if (selectedContact) {
+        void (async () => {
+          try {
+            const [inboxMessages, outboxMessages] = await Promise.all([
+              getInbox({ withUserID: selectedContact.id, limit: 100 }),
+              getOutbox({ limit: 200 }),
+            ]);
+            setThreads((prev) => ({
+              ...prev,
+              [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
+            }));
+          } catch (err) {
+            console.error("Failed to refresh thread after ack:", err);
+          }
+        })();
+      }
+      return;
+    }
+
+    if (lastWsMessage.type === "message_delivered" || lastWsMessage.type === "message_read") {
+      setThreads((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((username) => {
+          next[username] = next[username].map((msg) => {
+            if (msg.serverID !== lastWsMessage.id) {
+              return msg;
+            }
+
+            if (lastWsMessage.type === "message_read") {
+              return { ...msg, delivered: true, read: true };
+            }
+
+            return { ...msg, delivered: true };
+          });
+        });
+        return next;
+      });
+      return;
+    }
+
+    if (lastWsMessage.type === "error") {
+      setThreads((prev) => {
+        const next = { ...prev };
+        Object.keys(next).forEach((username) => {
+          next[username] = next[username].map((msg) =>
+            msg.clientID === lastWsMessage.id || (msg.id === lastWsMessage.id && !msg.serverID)
+              ? { ...msg, failed: true, delivered: false, errorMessage: lastWsMessage.body || "Delivery failed." }
+              : msg
+          );
+        });
+        return next;
+      });
+
+      if (selectedUsername && lastWsMessage.to === selectedUsername) {
+        setError(null);
+      }
+
+      if (selectedContact && lastWsMessage.to === selectedContact.username && lastWsMessage.body?.startsWith("User is not online:")) {
+        void (async () => {
+          try {
+            const [inboxMessages, outboxMessages] = await Promise.all([
+              getInbox({ withUserID: selectedContact.id, limit: 100 }),
+              getOutbox({ limit: 200 }),
+            ]);
+            setThreads((prev) => ({
+              ...prev,
+              [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
+            }));
+          } catch (err) {
+            console.error("Failed to refresh thread after delivery error:", err);
+          }
+        })();
+      }
       return;
     }
 
@@ -508,22 +737,40 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
 
       const normalized = addPaymentRequestMetadata({
         ...lastWsMessage,
-        createdAt: new Date().toISOString(),
+        id: lastWsMessage.id || Date.now(),
+        serverID: lastWsMessage.id || null,
+        createdAt: lastWsMessage.created_at || new Date().toISOString(),
+        sent: false,
+        delivered: false,
+        read: false,
       });
 
-      setThreads((prev) => ({
-        ...prev,
-        [lastWsMessage.from]: [...(prev[lastWsMessage.from] || []), normalized],
-      }));
+      setThreads((prev) => {
+        const existing = prev[lastWsMessage.from] || [];
+        return {
+          ...prev,
+          [lastWsMessage.from]: sortMessages(dedupeMessages([...existing, normalized])),
+        };
+      });
 
       if (selectedUsername !== lastWsMessage.from) {
         setUnreadByUser((prev) => ({
           ...prev,
           [lastWsMessage.from]: (prev[lastWsMessage.from] || 0) + 1,
         }));
+
+        if (lastWsMessage.id) {
+          void markMessageDelivered(lastWsMessage.id).catch((err) => {
+            console.error("Failed to mark message delivered:", err);
+          });
+        }
+      } else if (lastWsMessage.id) {
+        void markMessageRead(lastWsMessage.id).catch((err) => {
+          console.error("Failed to mark message read:", err);
+        });
       }
     }
-  }, [lastWsMessage, selectedUsername]);
+  }, [lastWsMessage, selectedContact, selectedUsername]);
 
   useEffect(() => {
     if (!selectedUsername) {
@@ -568,15 +815,19 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
 
     const normalized = addPaymentRequestMetadata({
       ...message,
+      clientID: message.id,
       from: "Me",
       sent: true,
       delivered: false,
+      read: false,
+      failed: false,
+      errorMessage: "",
       createdAt: message.createdAt || new Date().toISOString(),
     });
 
     setThreads((prev) => ({
       ...prev,
-      [selectedUsername]: [...(prev[selectedUsername] || []), normalized],
+      [selectedUsername]: sortMessages([...(prev[selectedUsername] || []), normalized]),
     }));
   };
 
@@ -677,7 +928,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
                 return (
                   <li key={contact.id} onClick={() => handleSelectContact(contact)}>
                     <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? "online" : ""}`}>
-                      <AvatarImage src="" alt="" />
+                      <AvatarImage src={contact.avatar_url || ""} alt={contact.display_name || contact.username} />
                       <AvatarFallback><PersonIcon width="24" height="24" /></AvatarFallback>
                     </Avatar>
                     <div className="contact-meta">

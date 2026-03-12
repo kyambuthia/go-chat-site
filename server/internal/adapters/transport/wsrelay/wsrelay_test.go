@@ -196,6 +196,39 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	}
 }
 
+func TestWebSocketHandler_OfflineRecipientErrorIncludesClientMessageIDAndRecipient(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+
+	authenticator := ExampleAuthenticatorForTests("alice-token", 1, "alice")
+	resolve := ExampleResolveUserIDForTests(map[string]int{"alice": 1, "bob": 2})
+
+	s := mustStartWSServer(t, WebSocketHandler(hub, authenticator, resolve))
+	defer s.Close()
+
+	aliceHeader := http.Header{}
+	aliceHeader.Add("Authorization", "Bearer alice-token")
+	aliceConn, _ := dialWS(t, s.URL, aliceHeader)
+	defer aliceConn.Close()
+
+	msg := Message{ID: 88, Type: coremsg.KindDirectMessage, To: "bob", Body: "hello"}
+	if err := aliceConn.WriteJSON(msg); err != nil {
+		t.Fatalf("alice write json: %v", err)
+	}
+
+	errMsg := readUntilType(t, aliceConn, coremsg.KindError, 2*time.Second)
+	if errMsg.ID != 88 {
+		t.Fatalf("error id = %d, want 88", errMsg.ID)
+	}
+	if errMsg.To != "bob" {
+		t.Fatalf("error to = %q, want bob", errMsg.To)
+	}
+	if errMsg.Body != "User is not online: bob" {
+		t.Fatalf("error body = %q, want offline error", errMsg.Body)
+	}
+}
+
 func TestWebSocketHandler_PresenceOfflineBroadcast(t *testing.T) {
 	hub := NewHub()
 	go hub.Run()

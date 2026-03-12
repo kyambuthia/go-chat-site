@@ -61,9 +61,11 @@ func NewDurableRelayServiceWithCorrelation(transport Transport, persistence Pers
 }
 
 func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequest) (DeliveryReceipt, error) {
+	var stored StoredMessage
 	var storedID int64
 	if s.persistence != nil {
-		stored, err := s.persistence.StoreDirectMessage(ctx, PersistDirectMessageRequest{
+		var err error
+		stored, err = s.persistence.StoreDirectMessage(ctx, PersistDirectMessageRequest{
 			FromUserID: req.FromUserID,
 			ToUserID:   req.ToUserID,
 			Body:       req.Body,
@@ -76,6 +78,7 @@ func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequ
 
 	ok := s.transport.SendDirect(req.ToUserID, Message{
 		Type: KindDirectMessage,
+		ID:   storedID,
 		From: req.From,
 		Body: req.Body,
 	})

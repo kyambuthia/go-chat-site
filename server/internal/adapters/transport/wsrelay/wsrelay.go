@@ -163,12 +163,12 @@ func (c *client) readLoop() {
 
 		recipientID, err := c.resolveToUserID(msg.To)
 		if err != nil {
-			c.trySend(Message{Type: coremsg.KindError, Body: "User not found: " + msg.To})
+			c.trySend(Message{Type: coremsg.KindError, ID: msg.ID, To: msg.To, Body: "User not found: " + msg.To})
 			continue
 		}
 
 		if c.messaging == nil {
-			c.trySend(Message{Type: coremsg.KindError, Body: "relay unavailable"})
+			c.trySend(Message{Type: coremsg.KindError, ID: msg.ID, To: msg.To, Body: "relay unavailable"})
 			continue
 		}
 
@@ -180,11 +180,11 @@ func (c *client) readLoop() {
 			MessageID:  msg.ID,
 		})
 		if err != nil {
-			c.trySend(Message{Type: coremsg.KindError, Body: "delivery failed"})
+			c.trySend(Message{Type: coremsg.KindError, ID: msg.ID, To: msg.To, Body: "delivery failed"})
 			continue
 		}
 		if !receipt.Delivered {
-			c.trySend(Message{Type: coremsg.KindError, Body: "User is not online: " + msg.To})
+			c.trySend(Message{Type: coremsg.KindError, ID: msg.ID, To: msg.To, Body: "User is not online: " + msg.To})
 			continue
 		}
 

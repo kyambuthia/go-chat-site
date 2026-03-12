@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addContact, getContacts, removeContact, sendMoney, setAuthErrorHandler, setToken } from "../api.js";
+import {
+  addContact,
+  getContacts,
+  getInbox,
+  getOutbox,
+  markMessageDelivered,
+  markMessageRead,
+  removeContact,
+  sendMoney,
+  setAuthErrorHandler,
+  setToken,
+} from "../api.js";
 
 function jsonResponse(status, payload, headers = {}) {
   return {
@@ -87,6 +98,68 @@ test("removeContact deletes by contact id", async () => {
 
   assert.equal(capturedOptions.method, "DELETE");
   assert.deepEqual(JSON.parse(capturedOptions.body), { contact_id: 42 });
+});
+
+test("getInbox sends query params for thread and unread filters", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-inbox");
+
+  let capturedURL = "";
+  global.fetch = async (url) => {
+    capturedURL = url;
+    return jsonResponse(200, []);
+  };
+
+  await getInbox({ withUserID: 7, unreadOnly: true, limit: 25 });
+
+  assert.equal(capturedURL, "http://localhost:8080/api/messages/inbox?limit=25&with_user_id=7&unread_only=true");
+});
+
+test("getOutbox sends pagination query params", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-outbox");
+
+  let capturedURL = "";
+  global.fetch = async (url) => {
+    capturedURL = url;
+    return jsonResponse(200, []);
+  };
+
+  await getOutbox({ afterID: 9, limit: 10 });
+
+  assert.equal(capturedURL, "http://localhost:8080/api/messages/outbox?limit=10&after_id=9");
+});
+
+test("markMessageRead posts message id", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-read");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(200, null, { "content-length": "0" });
+  };
+
+  await markMessageRead(52);
+
+  assert.equal(capturedOptions.method, "POST");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { message_id: 52 });
+});
+
+test("markMessageDelivered posts message id", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-delivered");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(200, null, { "content-length": "0" });
+  };
+
+  await markMessageDelivered(53);
+
+  assert.equal(capturedOptions.method, "POST");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { message_id: 53 });
 });
 
 test("invalid token response triggers auth error handler", async () => {
