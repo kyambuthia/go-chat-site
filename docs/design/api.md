@@ -51,9 +51,15 @@ Auth transport:
 
 Current delivery behavior:
 - new connections receive `presence_state` with the currently online usernames
-- `direct_message` to online user is forwarded
-- sender receives `message_ack` on successful relay
-- if recipient offline, sender receives `error` and **no ack**
+- `direct_message` to online user is forwarded with durable `id` when available
+- sender receives `message_ack` on successful relay; the ack echoes the client `id` and may include `stored_message_id`
+- if recipient offline, sender receives `error` and **no ack**; offline-send errors may include `stored_message_id` when the message was persisted
+
+Current sync payload notes:
+- `GET /api/messaging/sync` accepts optional `after_id` and `limit`
+- sync responses return `cursor.after_id`, `cursor.next_after_id`, `messages`, and `has_more`
+- clients should treat `cursor.next_after_id` as the next durable checkpoint after each page
+- `GET /api/messages/outbox` and `GET /api/messaging/sync` may include `client_message_id` on sent messages so the client can reconcile optimistic local bubbles with durable stored messages after reconnect
 
 ## Auth and Security Notes
 - JWT secret is configured by `JWT_SECRET`

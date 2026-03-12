@@ -147,10 +147,10 @@ function dedupeMessages(messages) {
   const deduped = [];
 
   for (const message of messages) {
-    const identity = message.serverID
-      ? `server:${message.serverID}`
-      : message.clientID
-        ? `client:${message.clientID}`
+    const identity = message.clientID
+      ? `client:${message.clientID}:${message.to || message.from || ""}:${message.sent ? "sent" : "received"}`
+      : message.serverID
+        ? `server:${message.serverID}`
         : `${message.sent ? "sent" : "received"}:${message.from || ""}:${message.body || ""}:${message.createdAt || ""}`;
 
     if (seen.has(identity)) {
@@ -198,6 +198,7 @@ function buildThreadHistory(contact, inboxMessages, outboxMessages) {
     .map((message) => addPaymentRequestMetadata({
       id: message.id,
       serverID: message.id,
+      clientID: message.client_message_id || undefined,
       from: "Me",
       to: contact.username,
       body: message.body,
@@ -218,6 +219,7 @@ function normalizeStoredMessageForContact(message, contact) {
   return addPaymentRequestMetadata({
     id: message.id,
     serverID: message.id,
+    clientID: !received && message.client_message_id ? message.client_message_id : undefined,
     from: received ? contact.username : "Me",
     to: received ? undefined : contact.username,
     body: message.body,
@@ -824,7 +826,13 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         Object.keys(next).forEach((username) => {
           next[username] = next[username].map((msg) =>
             msg.clientID === lastWsMessage.id || (msg.id === lastWsMessage.id && !msg.serverID)
-              ? { ...msg, delivered: true, failed: false, errorMessage: "" }
+              ? {
+                ...msg,
+                serverID: lastWsMessage.stored_message_id || msg.serverID,
+                delivered: true,
+                failed: false,
+                errorMessage: "",
+              }
               : msg
           );
         });
@@ -889,27 +897,17 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         Object.keys(next).forEach((username) => {
           next[username] = next[username].map((msg) =>
             msg.clientID === lastWsMessage.id || (msg.id === lastWsMessage.id && !msg.serverID)
-              ? { ...msg, failed: true, delivered: false, errorMessage: lastWsMessage.body || "Delivery failed." }
+              ? {
+                ...msg,
+                serverID: lastWsMessage.stored_message_id || msg.serverID,
+                failed: true,
+                delivered: false,
+                errorMessage: lastWsMessage.body || "Delivery failed.",
+              }
               : msg
           );
         });
         return next;
-      });
-      setThreadSummaries((prev) => {
-        if (!lastWsMessage.to || !prev[lastWsMessage.to]) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [lastWsMessage.to]: {
-            ...prev[lastWsMessage.to],
-            last_message: {
-              ...prev[lastWsMessage.to].last_message,
-              delivered_at: undefined,
-              read_at: undefined,
-            },
-          },
-        };
       });
 
       if (selectedUsername && lastWsMessage.to === selectedUsername) {
@@ -927,6 +925,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
               ...prev,
               [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
             }));
+            const summaries = await getMessageThreads({ limit: 200 });
+            setThreadSummaries(buildThreadSummariesByUsername(summaries || []));
+            setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries || []));
           } catch (err) {
             console.error("Failed to refresh thread after delivery error:", err);
           }

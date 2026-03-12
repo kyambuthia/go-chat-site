@@ -413,6 +413,15 @@ func TestAdapter_ListOutbox_ReturnsSentMessagesDescendingByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveDirectMessage 3: %v", err)
 	}
+	if err := a.RecordClientMessageCorrelation(context.Background(), coremsg.ClientMessageCorrelation{
+		SenderUserID:    bobID,
+		RecipientUserID: charlieID,
+		ClientMessageID: 9876,
+		StoredMessageID: saved3.ID,
+		Delivered:       true,
+	}); err != nil {
+		t.Fatalf("RecordClientMessageCorrelation: %v", err)
+	}
 
 	outbox, err := a.ListOutbox(context.Background(), bobID, 10)
 	if err != nil {
@@ -423,6 +432,9 @@ func TestAdapter_ListOutbox_ReturnsSentMessagesDescendingByID(t *testing.T) {
 	}
 	if outbox[0].ID != saved3.ID || outbox[1].ID != saved1.ID {
 		t.Fatalf("unexpected outbox order/contents: %+v", outbox)
+	}
+	if outbox[0].ClientMessageID != 9876 {
+		t.Fatalf("outbox[0].ClientMessageID = %d, want 9876", outbox[0].ClientMessageID)
 	}
 	for _, msg := range outbox {
 		if msg.FromUserID != bobID {

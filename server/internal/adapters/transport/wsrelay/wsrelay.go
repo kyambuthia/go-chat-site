@@ -243,11 +243,17 @@ func (c *client) readLoop() {
 			continue
 		}
 		if !receipt.Delivered {
-			c.trySend(Message{Type: coremsg.KindError, ID: msg.ID, To: msg.To, Body: "User is not online: " + msg.To})
+			c.trySend(Message{
+				Type:            coremsg.KindError,
+				ID:              msg.ID,
+				To:              msg.To,
+				Body:            "User is not online: " + msg.To,
+				StoredMessageID: receipt.StoredMessageID,
+			})
 			continue
 		}
 
-		c.trySend(Message{Type: coremsg.KindMessageAck, ID: msg.ID})
+		c.trySend(Message{Type: coremsg.KindMessageAck, ID: msg.ID, StoredMessageID: receipt.StoredMessageID})
 	}
 }
 

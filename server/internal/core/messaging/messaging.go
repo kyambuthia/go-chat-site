@@ -25,12 +25,13 @@ const (
 
 // Message is the normalized real-time payload envelope for the messaging domain.
 type Message struct {
-	ID    int64       `json:"id,omitempty"`
-	Type  MessageKind `json:"type"`
-	From  string      `json:"from,omitempty"`
-	To    string      `json:"to,omitempty"`
-	Body  string      `json:"body,omitempty"`
-	Users []string    `json:"users,omitempty"`
+	ID              int64       `json:"id,omitempty"`
+	Type            MessageKind `json:"type"`
+	From            string      `json:"from,omitempty"`
+	To              string      `json:"to,omitempty"`
+	Body            string      `json:"body,omitempty"`
+	Users           []string    `json:"users,omitempty"`
+	StoredMessageID int64       `json:"stored_message_id,omitempty"`
 }
 
 // Thread models a future conversation primitive (DM thread, group thread, marketplace order thread).
@@ -59,13 +60,14 @@ type ClientMessageCorrelation struct {
 
 // StoredMessage is the durable message record shape used for persistence and sync.
 type StoredMessage struct {
-	ID          int64
-	FromUserID  int
-	ToUserID    int
-	Body        string
-	CreatedAt   time.Time
-	DeliveredAt *time.Time
-	ReadAt      *time.Time
+	ID              int64
+	FromUserID      int
+	ToUserID        int
+	Body            string
+	CreatedAt       time.Time
+	DeliveredAt     *time.Time
+	ReadAt          *time.Time
+	ClientMessageID int64
 }
 
 // Transport is the adapter seam for centralized relay today and P2P transports later.

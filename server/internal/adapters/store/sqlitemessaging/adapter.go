@@ -105,9 +105,10 @@ func (a *Adapter) ListOutboxBefore(ctx context.Context, userID int, beforeID int
 func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
 	rows, err := a.DB.QueryContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
-		       md.delivered_at, md.read_at
+		       md.delivered_at, md.read_at, mc.client_message_id
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
+		LEFT JOIN message_client_correlations mc ON mc.stored_message_id = m.id AND mc.sender_user_id = m.from_user_id
 		WHERE m.from_user_id = ? AND m.id > ?
 		ORDER BY m.id ASC
 		LIMIT ?
@@ -119,7 +120,7 @@ func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64
 
 	out := make([]coremsg.StoredMessage, 0)
 	for rows.Next() {
-		msg, err := scanStoredMessage(rows)
+		msg, err := scanStoredMessageWithClientID(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -134,9 +135,10 @@ func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64
 func (a *Adapter) listOutboxQuery(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
-		       md.delivered_at, md.read_at
+		       md.delivered_at, md.read_at, mc.client_message_id
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
+		LEFT JOIN message_client_correlations mc ON mc.stored_message_id = m.id AND mc.sender_user_id = m.from_user_id
 		WHERE m.from_user_id = ?`
 	args := []any{userID}
 	if beforeID > 0 {
@@ -156,7 +158,7 @@ func (a *Adapter) listOutboxQuery(ctx context.Context, userID int, beforeID int6
 
 	out := make([]coremsg.StoredMessage, 0)
 	for rows.Next() {
-		msg, err := scanStoredMessage(rows)
+		msg, err := scanStoredMessageWithClientID(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -408,12 +410,13 @@ func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int
 func (a *Adapter) getByID(ctx context.Context, id int64) (coremsg.StoredMessage, error) {
 	row := a.DB.QueryRowContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
-		       md.delivered_at, md.read_at
+		       md.delivered_at, md.read_at, mc.client_message_id
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
+		LEFT JOIN message_client_correlations mc ON mc.stored_message_id = m.id AND mc.sender_user_id = m.from_user_id
 		WHERE m.id = ?
 	`, id)
-	return scanStoredMessage(row)
+	return scanStoredMessageWithClientID(row)
 }
 
 type scanner interface {
@@ -436,6 +439,30 @@ func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 	if readAt.Valid {
 		t := readAt.Time
 		msg.ReadAt = &t
+	}
+	return msg, nil
+}
+
+func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
+	var msg coremsg.StoredMessage
+	var createdAt time.Time
+	var deliveredAt sql.NullTime
+	var readAt sql.NullTime
+	var clientMessageID sql.NullInt64
+	if err := s.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Body, &createdAt, &deliveredAt, &readAt, &clientMessageID); err != nil {
+		return coremsg.StoredMessage{}, err
+	}
+	msg.CreatedAt = createdAt
+	if deliveredAt.Valid {
+		t := deliveredAt.Time
+		msg.DeliveredAt = &t
+	}
+	if readAt.Valid {
+		t := readAt.Time
+		msg.ReadAt = &t
+	}
+	if clientMessageID.Valid {
+		msg.ClientMessageID = clientMessageID.Int64
 	}
 	return msg, nil
 }

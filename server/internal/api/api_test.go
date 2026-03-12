@@ -738,8 +738,17 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 	})
 
 	t.Run("returns outbox messages in descending order", func(t *testing.T) {
-		if _, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?), (?, ?, ?)`,
-			bobID, aliceID, "out-1", bobID, aliceID, "out-2"); err != nil {
+		res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?), (?, ?, ?)`,
+			bobID, aliceID, "out-1", bobID, aliceID, "out-2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		lastID, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DB.Exec(`INSERT INTO message_client_correlations (sender_user_id, recipient_user_id, client_message_id, stored_message_id, delivered)
+			VALUES (?, ?, ?, ?, ?)`, bobID, aliceID, 7001, lastID, 1); err != nil {
 			t.Fatal(err)
 		}
 
@@ -763,6 +772,9 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 		}
 		if got := int(resp[0]["to_user_id"].(float64)); got != aliceID {
 			t.Fatalf("to_user_id = %d, want %d", got, aliceID)
+		}
+		if got := int64(resp[0]["client_message_id"].(float64)); got != 7001 {
+			t.Fatalf("client_message_id = %d, want 7001", got)
 		}
 	})
 
@@ -861,6 +873,10 @@ func TestMessagingSyncRoute_CursorStream(t *testing.T) {
 	if _, err := s.DB.Exec(`INSERT INTO message_deliveries (message_id, delivered_at) VALUES (?, CURRENT_TIMESTAMP)`, lastID); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.DB.Exec(`INSERT INTO message_client_correlations (sender_user_id, recipient_user_id, client_message_id, stored_message_id, delivered)
+		VALUES (?, ?, ?, ?, ?)`, bobID, aliceID, 4002, firstID+1, 1); err != nil {
+		t.Fatal(err)
+	}
 
 	hub := wsrelay.NewHub()
 	go hub.Run()
@@ -901,6 +917,9 @@ func TestMessagingSyncRoute_CursorStream(t *testing.T) {
 	second := messages[1].(map[string]any)
 	if got := int64(first["id"].(float64)); got != firstID+1 {
 		t.Fatalf("first id = %d, want %d", got, firstID+1)
+	}
+	if got := int64(first["client_message_id"].(float64)); got != 4002 {
+		t.Fatalf("first client_message_id = %d, want 4002", got)
 	}
 	if got := int64(second["id"].(float64)); got != firstID+2 {
 		t.Fatalf("second id = %d, want %d", got, firstID+2)

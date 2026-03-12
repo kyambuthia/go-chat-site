@@ -425,6 +425,9 @@ func storedMessagesToJSON(msgs []coremsg.StoredMessage) []map[string]any {
 			"body":         msg.Body,
 			"created_at":   msg.CreatedAt,
 		}
+		if msg.ClientMessageID > 0 {
+			item["client_message_id"] = msg.ClientMessageID
+		}
 		if msg.DeliveredAt != nil {
 			item["delivered_at"] = *msg.DeliveredAt
 		}

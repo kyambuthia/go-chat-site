@@ -1,6 +1,7 @@
 package wsrelay
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -135,6 +136,26 @@ func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool
 	t.Fatalf("timed out waiting for %s", description)
 }
 
+type stubDeliveryService struct {
+	transport       coremsg.Transport
+	storedMessageID int64
+}
+
+func (s *stubDeliveryService) SendDirect(ctx context.Context, req coremsg.DirectSendRequest) (coremsg.DeliveryReceipt, error) {
+	_ = ctx
+	delivered := s.transport.SendDirect(req.ToUserID, Message{
+		Type: coremsg.KindDirectMessage,
+		ID:   s.storedMessageID,
+		From: req.From,
+		Body: req.Body,
+	})
+	return coremsg.DeliveryReceipt{
+		MessageID:       req.MessageID,
+		StoredMessageID: s.storedMessageID,
+		Delivered:       delivered,
+	}, nil
+}
+
 func TestClientSendWithTimeout_AfterCloseReturnsFalse(t *testing.T) {
 	c := &client{send: make(chan Message, 1)}
 	c.close()
@@ -237,6 +258,7 @@ func TestWebSocketHandler_MissingToken_ReturnsUnauthorized(t *testing.T) {
 
 func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	hub := NewHub()
+	hub.SetDeliveryService(&stubDeliveryService{transport: hub, storedMessageID: 501})
 	go hub.Run()
 	defer hub.Shutdown()
 
@@ -278,6 +300,9 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	}
 
 	delivered := readUntilType(t, bobConn, coremsg.KindDirectMessage, 2*time.Second)
+	if delivered.ID != 501 {
+		t.Fatalf("delivered.ID = %d, want 501", delivered.ID)
+	}
 	if delivered.From != "alice" {
 		t.Fatalf("delivered.From = %q, want alice", delivered.From)
 	}
@@ -289,10 +314,14 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	if ack.ID != 99 {
 		t.Fatalf("ack.ID = %d, want 99", ack.ID)
 	}
+	if ack.StoredMessageID != 501 {
+		t.Fatalf("ack.StoredMessageID = %d, want 501", ack.StoredMessageID)
+	}
 }
 
 func TestWebSocketHandler_OfflineRecipientErrorIncludesClientMessageIDAndRecipient(t *testing.T) {
 	hub := NewHub()
+	hub.SetDeliveryService(&stubDeliveryService{transport: hub, storedMessageID: 502})
 	go hub.Run()
 	defer hub.Shutdown()
 
@@ -321,6 +350,9 @@ func TestWebSocketHandler_OfflineRecipientErrorIncludesClientMessageIDAndRecipie
 	}
 	if errMsg.Body != "User is not online: bob" {
 		t.Fatalf("error body = %q, want offline error", errMsg.Body)
+	}
+	if errMsg.StoredMessageID != 502 {
+		t.Fatalf("error stored_message_id = %d, want 502", errMsg.StoredMessageID)
 	}
 }
 
