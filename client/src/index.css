@@ -759,6 +759,13 @@ button.accept {
   font-size: 0.75rem;
 }
 
+.contact-preview {
+  max-width: 32ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .contact-item-actions {
   margin-left: auto;
 }

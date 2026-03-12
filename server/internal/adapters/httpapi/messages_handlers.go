@@ -13,6 +13,7 @@ import (
 
 type MessagesHandler struct {
 	Messaging        coremsg.PersistenceService
+	Threads          coremsg.ThreadSummaryService
 	ReceiptTransport coremsg.Transport
 }
 
@@ -230,6 +231,67 @@ func (h *MessagesHandler) GetSync(w http.ResponseWriter, r *http.Request) {
 		},
 		"messages": storedMessagesToJSON(result.Messages),
 		"has_more": result.HasMore,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (h *MessagesHandler) GetThreads(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+	if h.Threads == nil {
+		web.JSONError(w, errors.New("messaging threads unavailable"), http.StatusServiceUnavailable)
+		return
+	}
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid limit"), http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+
+	summaries, err := h.Threads.ListThreadSummaries(r.Context(), userID, limit)
+	if err != nil {
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	resp := make([]map[string]any, 0, len(summaries))
+	for _, summary := range summaries {
+		item := map[string]any{
+			"user_id":      summary.CounterpartyUserID,
+			"username":     summary.CounterpartyUsername,
+			"display_name": summary.CounterpartyDisplayName,
+			"avatar_url":   summary.CounterpartyAvatarURL,
+			"unread_count": summary.UnreadCount,
+			"last_message": map[string]any{
+				"id":           summary.LastMessageID,
+				"from_user_id": summary.LastMessageFromUserID,
+				"to_user_id":   summary.LastMessageToUserID,
+				"body":         summary.LastMessageBody,
+				"created_at":   summary.LastMessageCreatedAt,
+			},
+		}
+		if summary.LastDeliveredAt != nil {
+			item["last_message"].(map[string]any)["delivered_at"] = *summary.LastDeliveredAt
+		}
+		if summary.LastReadAt != nil {
+			item["last_message"].(map[string]any)["read_at"] = *summary.LastReadAt
+		}
+		resp = append(resp, item)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

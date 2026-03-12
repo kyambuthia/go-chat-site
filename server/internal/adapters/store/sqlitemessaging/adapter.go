@@ -15,6 +15,7 @@ type Adapter struct {
 
 var _ coremsg.MessageRepository = (*Adapter)(nil)
 var _ coremsg.ClientMessageCorrelationRecorder = (*Adapter)(nil)
+var _ coremsg.ThreadSummaryRepository = (*Adapter)(nil)
 
 func (a *Adapter) RecordClientMessageCorrelation(ctx context.Context, c coremsg.ClientMessageCorrelation) error {
 	delivered := 0
@@ -267,6 +268,97 @@ func (a *Adapter) GetMessageForRecipient(ctx context.Context, recipientUserID in
 		return coremsg.StoredMessage{}, err
 	}
 	return msg, nil
+}
+
+func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int) ([]coremsg.ThreadSummary, error) {
+	rows, err := a.DB.QueryContext(ctx, `
+		WITH thread_messages AS (
+			SELECT
+				m.id,
+				m.from_user_id,
+				m.to_user_id,
+				m.body,
+				m.created_at,
+				md.delivered_at,
+				md.read_at,
+				CASE WHEN m.from_user_id = ? THEN m.to_user_id ELSE m.from_user_id END AS other_user_id,
+				CASE WHEN m.to_user_id = ? AND md.read_at IS NULL THEN 1 ELSE 0 END AS unread_count,
+				ROW_NUMBER() OVER (
+					PARTITION BY CASE WHEN m.from_user_id = ? THEN m.to_user_id ELSE m.from_user_id END
+					ORDER BY m.id DESC
+				) AS thread_rank
+			FROM messages m
+			LEFT JOIN message_deliveries md ON md.message_id = m.id
+			WHERE m.from_user_id = ? OR m.to_user_id = ?
+		),
+		thread_counts AS (
+			SELECT other_user_id, SUM(unread_count) AS unread_count
+			FROM thread_messages
+			GROUP BY other_user_id
+		)
+		SELECT
+			tm.other_user_id,
+			u.username,
+			COALESCE(u.display_name, ''),
+			COALESCE(u.avatar_url, ''),
+			tm.id,
+			tm.from_user_id,
+			tm.to_user_id,
+			tm.body,
+			tm.created_at,
+			tm.delivered_at,
+			tm.read_at,
+			tc.unread_count
+		FROM thread_messages tm
+		INNER JOIN thread_counts tc ON tc.other_user_id = tm.other_user_id
+		INNER JOIN users u ON u.id = tm.other_user_id
+		WHERE tm.thread_rank = 1
+		ORDER BY tm.id DESC
+		LIMIT ?
+	`, userID, userID, userID, userID, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	summaries := make([]coremsg.ThreadSummary, 0)
+	for rows.Next() {
+		var summary coremsg.ThreadSummary
+		var createdAt time.Time
+		var deliveredAt sql.NullTime
+		var readAt sql.NullTime
+		if err := rows.Scan(
+			&summary.CounterpartyUserID,
+			&summary.CounterpartyUsername,
+			&summary.CounterpartyDisplayName,
+			&summary.CounterpartyAvatarURL,
+			&summary.LastMessageID,
+			&summary.LastMessageFromUserID,
+			&summary.LastMessageToUserID,
+			&summary.LastMessageBody,
+			&createdAt,
+			&deliveredAt,
+			&readAt,
+			&summary.UnreadCount,
+		); err != nil {
+			return nil, err
+		}
+		summary.LastMessageCreatedAt = createdAt
+		if deliveredAt.Valid {
+			t := deliveredAt.Time
+			summary.LastDeliveredAt = &t
+		}
+		if readAt.Valid {
+			t := readAt.Time
+			summary.LastReadAt = &t
+		}
+		summaries = append(summaries, summary)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return summaries, nil
 }
 
 func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int, beforeID int64, limit int, unreadOnly bool) ([]coremsg.StoredMessage, error) {

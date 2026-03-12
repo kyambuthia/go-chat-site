@@ -5,6 +5,7 @@ import {
   addContact,
   getContacts,
   getInbox,
+  getMessageThreads,
   getOutbox,
   getWalletTransfers,
   markMessageDelivered,
@@ -131,6 +132,21 @@ test("getOutbox sends pagination query params", async () => {
   await getOutbox({ afterID: 9, limit: 10 });
 
   assert.equal(capturedURL, "http://localhost:8080/api/messages/outbox?limit=10&after_id=9");
+});
+
+test("getMessageThreads sends limit query params to messaging threads endpoint", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-threads");
+
+  let capturedURL = "";
+  global.fetch = async (url) => {
+    capturedURL = url;
+    return jsonResponse(200, []);
+  };
+
+  await getMessageThreads({ limit: 30 });
+
+  assert.equal(capturedURL, "http://localhost:8080/api/messaging/threads?limit=30");
 });
 
 test("syncMessages sends cursor query params to messaging sync endpoint", async () => {

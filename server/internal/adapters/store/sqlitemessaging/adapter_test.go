@@ -472,3 +472,68 @@ func TestAdapter_ListOutboxBeforeAndAfter_PaginatesByMessageID(t *testing.T) {
 		t.Fatalf("unexpected outbox after-page: %+v", afterPage)
 	}
 }
+
+func TestAdapter_ListThreadSummaries_ReturnsLatestMessageAndUnreadCounts(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	charlieID := seedUser(t, s, "charlie")
+	if _, err := s.DB.Exec(`UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?`, "Alice", "https://example.com/alice.png", aliceID); err != nil {
+		t.Fatal(err)
+	}
+	a := &Adapter{DB: s.DB}
+
+	msg1, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "alice-1",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage alice-1: %v", err)
+	}
+	msg2, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: bobID,
+		ToUserID:   aliceID,
+		Body:       "bob-2",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage bob-2: %v", err)
+	}
+	if err := a.MarkRead(context.Background(), msg2.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("MarkRead bob-2: %v", err)
+	}
+	msg3, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: charlieID,
+		ToUserID:   bobID,
+		Body:       "charlie-3",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage charlie-3: %v", err)
+	}
+
+	summaries, err := a.ListThreadSummaries(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListThreadSummaries error: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("expected 2 summaries, got %d", len(summaries))
+	}
+	if summaries[0].CounterpartyUsername != "charlie" || summaries[0].LastMessageID != msg3.ID || summaries[0].UnreadCount != 1 {
+		t.Fatalf("unexpected first summary: %+v", summaries[0])
+	}
+	if summaries[1].CounterpartyUsername != "alice" || summaries[1].LastMessageID != msg2.ID {
+		t.Fatalf("unexpected second summary: %+v", summaries[1])
+	}
+	if summaries[1].UnreadCount != 1 {
+		t.Fatalf("alice unread_count = %d, want 1", summaries[1].UnreadCount)
+	}
+	if summaries[1].CounterpartyDisplayName != "Alice" || summaries[1].CounterpartyAvatarURL != "https://example.com/alice.png" {
+		t.Fatalf("missing counterparty metadata: %+v", summaries[1])
+	}
+	if summaries[1].LastReadAt == nil {
+		t.Fatalf("expected last read_at on alice summary: %+v", summaries[1])
+	}
+	if msg1.ID == summaries[1].LastMessageID {
+		t.Fatalf("expected latest alice thread message to be msg2, got %+v", summaries[1])
+	}
+}

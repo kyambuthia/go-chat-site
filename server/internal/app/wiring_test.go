@@ -32,7 +32,7 @@ func TestNewWiring_ComposesWorkingCoreServices(t *testing.T) {
 
 	s := newTestStore(t)
 	w := NewWiring(s)
-	if w == nil || w.Auth == nil || w.Identity == nil || w.Contacts == nil || w.Ledger == nil {
+	if w == nil || w.Auth == nil || w.Identity == nil || w.Contacts == nil || w.Ledger == nil || w.MessagingThreads == nil {
 		t.Fatalf("unexpected nil wiring/services: %+v", w)
 	}
 

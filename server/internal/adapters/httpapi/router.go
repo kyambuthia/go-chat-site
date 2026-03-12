@@ -45,7 +45,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
 	inviteHandler := &InviteHandler{Contacts: wiring.Contacts}
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
-	messagesHandler := &MessagesHandler{Messaging: wiring.MessagingPersistence, ReceiptTransport: hub}
+	messagesHandler := &MessagesHandler{Messaging: wiring.MessagingPersistence, Threads: wiring.MessagingThreads, ReceiptTransport: hub}
 	meHandler := &MeHandler{Identity: wiring.Identity}
 
 	mux.HandleFunc("/healthz", healthzHandler)
@@ -87,6 +87,8 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
 	mux.Handle("/api/messages/inbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetInbox)))
 	mux.Handle("/api/messages/outbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetOutbox)))
+	mux.Handle("/api/messages/threads", auth.Middleware(http.HandlerFunc(messagesHandler.GetThreads)))
+	mux.Handle("/api/messaging/threads", auth.Middleware(http.HandlerFunc(messagesHandler.GetThreads)))
 	mux.Handle("/api/messages/sync", auth.Middleware(http.HandlerFunc(messagesHandler.GetSync)))
 	mux.Handle("/api/messaging/sync", auth.Middleware(http.HandlerFunc(messagesHandler.GetSync)))
 	mux.Handle("/api/messages/read", auth.Middleware(http.HandlerFunc(messagesHandler.MarkRead)))

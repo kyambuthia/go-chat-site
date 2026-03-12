@@ -25,6 +25,7 @@ type Wiring struct {
 	Identity             coreid.ProfileService
 	Ledger               coreledger.Service
 	MessagingPersistence coremsg.PersistenceService
+	MessagingThreads     coremsg.ThreadSummaryService
 	MessagingCorrelation coremsg.ClientMessageCorrelationRecorder
 }
 
@@ -43,6 +44,7 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 			Identity:             coreid.NewProfileService(identityAdapter),
 			Ledger:               coreledger.NewService(ledgerAdapter, ledgerAdapter),
 			MessagingPersistence: messagingPersistence,
+			MessagingThreads:     coremsg.NewThreadSummaryService(messagingAdapter),
 			MessagingCorrelation: messagingAdapter,
 		}
 	}

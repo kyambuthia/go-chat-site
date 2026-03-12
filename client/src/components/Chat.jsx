@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { getContacts, getInbox, getOutbox, markMessageDelivered, markMessageRead, sendMoney } from "../api";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { getContacts, getInbox, getMessageThreads, getOutbox, markMessageDelivered, markMessageRead, sendMoney, syncMessages } from "../api";
 import {
   CheckIcon,
   PaperPlaneIcon,
@@ -210,6 +210,68 @@ function buildThreadHistory(contact, inboxMessages, outboxMessages) {
     }));
 
   return sortMessages(dedupeMessages([...received, ...sent]));
+}
+
+function normalizeStoredMessageForContact(message, contact) {
+  const received = Number(message.from_user_id) === Number(contact.id);
+
+  return addPaymentRequestMetadata({
+    id: message.id,
+    serverID: message.id,
+    from: received ? contact.username : "Me",
+    to: received ? undefined : contact.username,
+    body: message.body,
+    sent: !received,
+    delivered: Boolean(message.delivered_at),
+    read: Boolean(message.read_at),
+    createdAt: message.created_at,
+    failed: !received && !message.delivered_at,
+    errorMessage: "",
+  });
+}
+
+function buildThreadSummariesByUsername(summaries) {
+  return Object.fromEntries((summaries || []).map((summary) => [summary.username, summary]));
+}
+
+function buildUnreadByUserFromThreadSummaries(summaries) {
+  const unreadByUser = {};
+  for (const summary of summaries || []) {
+    unreadByUser[summary.username] = Number(summary.unread_count || 0);
+  }
+  return unreadByUser;
+}
+
+function getMaxThreadSummaryMessageID(summaries) {
+  return (summaries || []).reduce((maxID, summary) => {
+    const messageID = Number(summary?.last_message?.id || 0);
+    return messageID > maxID ? messageID : maxID;
+  }, 0);
+}
+
+function summarizePreviewBody(body) {
+  const payload = decodeMicroPayload(body);
+  if (!payload) {
+    return body || "No messages yet";
+  }
+  if (payload.kind === "payment_request" && Number.isFinite(Number(payload.amount))) {
+    return `Requested ${formatMoney(payload.amount)}`;
+  }
+  if (payload.kind === "payment_request_update") {
+    return payload.status === "paid" ? "Payment marked paid" : "Payment update";
+  }
+  return body || "No messages yet";
+}
+
+function formatThreadPreview(summary) {
+  if (!summary?.last_message) {
+    return "No messages yet";
+  }
+  const preview = summarizePreviewBody(summary.last_message.body);
+  if (Number(summary.last_message.from_user_id) === Number(summary.user_id)) {
+    return preview;
+  }
+  return `You: ${preview}`;
 }
 
 function ChatWindow({
@@ -528,13 +590,16 @@ function ChatWindow({
   );
 }
 
-export default function Chat({ ws, selectedContact, setSelectedContact, onlineUsers, lastWsMessage }) {
+export default function Chat({ ws, selectedContact, setSelectedContact, onlineUsers, lastWsMessage, syncToken }) {
   const [threads, setThreads] = useState({});
   const [unreadByUser, setUnreadByUser] = useState({});
+  const [threadSummaries, setThreadSummaries] = useState({});
   const [contacts, setContacts] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const syncCursorRef = useRef(0);
+  const appliedSyncTokenRef = useRef(0);
 
   const selectedUsername = selectedContact?.username;
   const messages = selectedUsername ? (threads[selectedUsername] || []) : [];
@@ -544,28 +609,22 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       try {
         setLoading(true);
         setError(null);
-        const [contactsResponse, unreadResponse] = await Promise.all([
+        const [contactsResponse, threadSummariesResponse] = await Promise.all([
           getContacts(),
-          getInbox({ unreadOnly: true, limit: 200 }),
+          getMessageThreads({ limit: 200 }),
         ]);
         const nextContacts = contactsResponse || [];
-        const contactsByID = new Map(nextContacts.map((contact) => [Number(contact.id), contact.username]));
-        const nextUnreadByUser = {};
-
-        for (const message of unreadResponse || []) {
-          const username = contactsByID.get(Number(message.from_user_id));
-          if (!username) {
-            continue;
-          }
-          nextUnreadByUser[username] = (nextUnreadByUser[username] || 0) + 1;
-        }
+        const nextThreadSummaries = threadSummariesResponse || [];
 
         setContacts(nextContacts);
-        setUnreadByUser(nextUnreadByUser);
+        setThreadSummaries(buildThreadSummariesByUsername(nextThreadSummaries));
+        setUnreadByUser(buildUnreadByUserFromThreadSummaries(nextThreadSummaries));
+        syncCursorRef.current = getMaxThreadSummaryMessageID(nextThreadSummaries);
       } catch (err) {
         console.error("Failed to fetch contacts:", err);
         setError(err.message);
         setContacts([]);
+        setThreadSummaries({});
         setUnreadByUser({});
       } finally {
         setLoading(false);
@@ -573,6 +632,127 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     };
     fetchContacts();
   }, []);
+
+  useEffect(() => {
+    if (!syncToken || loading || appliedSyncTokenRef.current === syncToken) {
+      return;
+    }
+
+    appliedSyncTokenRef.current = syncToken;
+    let cancelled = false;
+
+    const runSync = async () => {
+      try {
+        const contactsByID = new Map(contacts.map((contact) => [Number(contact.id), contact]));
+        let nextAfterID = syncCursorRef.current;
+        let hasMore = true;
+        const deliveredMessageIDs = new Set();
+        const readMessageIDs = new Set();
+        const normalizedByUsername = {};
+
+        while (!cancelled && hasMore) {
+          const response = await syncMessages({ afterID: nextAfterID, limit: 200 });
+          const pageMessages = response?.messages || [];
+          const cursorNext = Number(response?.cursor?.next_after_id ?? nextAfterID);
+
+          for (const message of pageMessages) {
+            const contact = contactsByID.get(Number(message.from_user_id)) || contactsByID.get(Number(message.to_user_id));
+            if (!contact) {
+              continue;
+            }
+
+            const normalized = normalizeStoredMessageForContact(message, contact);
+            if (!normalizedByUsername[contact.username]) {
+              normalizedByUsername[contact.username] = [];
+            }
+            normalizedByUsername[contact.username].push(normalized);
+
+            const isIncoming = Number(message.from_user_id) === Number(contact.id);
+            if (!isIncoming || !message.id) {
+              continue;
+            }
+
+            if (selectedContact && Number(selectedContact.id) === Number(contact.id)) {
+              if (!message.read_at) {
+                readMessageIDs.add(message.id);
+              }
+            } else if (!message.delivered_at) {
+              deliveredMessageIDs.add(message.id);
+            }
+          }
+
+          if (pageMessages.length === 0 || !Number.isFinite(cursorNext) || cursorNext <= nextAfterID) {
+            hasMore = false;
+          } else {
+            nextAfterID = cursorNext;
+            hasMore = Boolean(response?.has_more);
+          }
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        if (Object.keys(normalizedByUsername).length > 0) {
+          setThreads((prev) => {
+            const next = { ...prev };
+            Object.entries(normalizedByUsername).forEach(([username, syncedMessagesForUser]) => {
+              next[username] = sortMessages(dedupeMessages([...(next[username] || []), ...syncedMessagesForUser]));
+            });
+            return next;
+          });
+        }
+
+        if (readMessageIDs.size > 0) {
+          setThreads((prev) => {
+            const next = { ...prev };
+            Object.keys(next).forEach((username) => {
+              next[username] = next[username].map((message) =>
+                readMessageIDs.has(message.serverID) ? { ...message, delivered: true, read: true } : message
+              );
+            });
+            return next;
+          });
+
+          await Promise.allSettled([...readMessageIDs].map((messageID) => markMessageRead(messageID)));
+        }
+
+        if (deliveredMessageIDs.size > 0) {
+          setThreads((prev) => {
+            const next = { ...prev };
+            Object.keys(next).forEach((username) => {
+              next[username] = next[username].map((message) =>
+                deliveredMessageIDs.has(message.serverID) ? { ...message, delivered: true } : message
+              );
+            });
+            return next;
+          });
+
+          await Promise.allSettled([...deliveredMessageIDs].map((messageID) => markMessageDelivered(messageID)));
+        }
+
+        syncCursorRef.current = nextAfterID;
+
+        const threadSummariesResponse = await getMessageThreads({ limit: 200 });
+        if (!cancelled) {
+          const summaries = threadSummariesResponse || [];
+          setThreadSummaries(buildThreadSummariesByUsername(summaries));
+          setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries));
+          syncCursorRef.current = Math.max(nextAfterID, getMaxThreadSummaryMessageID(summaries));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to sync messages:", err);
+        }
+      }
+    };
+
+    void runSync();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contacts, loading, selectedContact, syncToken]);
 
   useEffect(() => {
     if (!selectedContact) {
@@ -611,6 +791,13 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             ),
           }));
           await Promise.allSettled(unreadServerIDs.map((messageID) => markMessageRead(messageID)));
+          const threadSummariesResponse = await getMessageThreads({ limit: 200 });
+          if (!cancelled) {
+            const summaries = threadSummariesResponse || [];
+            setThreadSummaries(buildThreadSummariesByUsername(summaries));
+            setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries));
+            syncCursorRef.current = Math.max(syncCursorRef.current, getMaxThreadSummaryMessageID(summaries));
+          }
         }
       } catch (err) {
         if (!cancelled) {
@@ -655,6 +842,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
               ...prev,
               [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
             }));
+            const summaries = await getMessageThreads({ limit: 200 });
+            setThreadSummaries(buildThreadSummariesByUsername(summaries || []));
+            setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries || []));
           } catch (err) {
             console.error("Failed to refresh thread after ack:", err);
           }
@@ -681,6 +871,15 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         });
         return next;
       });
+      void (async () => {
+        try {
+          const summaries = await getMessageThreads({ limit: 200 });
+          setThreadSummaries(buildThreadSummariesByUsername(summaries || []));
+          setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries || []));
+        } catch (err) {
+          console.error("Failed to refresh thread summaries after receipt:", err);
+        }
+      })();
       return;
     }
 
@@ -695,6 +894,22 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           );
         });
         return next;
+      });
+      setThreadSummaries((prev) => {
+        if (!lastWsMessage.to || !prev[lastWsMessage.to]) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [lastWsMessage.to]: {
+            ...prev[lastWsMessage.to],
+            last_message: {
+              ...prev[lastWsMessage.to].last_message,
+              delivered_at: undefined,
+              read_at: undefined,
+            },
+          },
+        };
       });
 
       if (selectedUsername && lastWsMessage.to === selectedUsername) {
@@ -752,6 +967,28 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           [lastWsMessage.from]: sortMessages(dedupeMessages([...existing, normalized])),
         };
       });
+      setThreadSummaries((prev) => {
+        const existing = prev[lastWsMessage.from];
+        if (!existing) {
+          return prev;
+        }
+        return {
+          ...prev,
+          [lastWsMessage.from]: {
+            ...existing,
+            unread_count: selectedUsername !== lastWsMessage.from
+              ? Number(existing.unread_count || 0) + 1
+              : 0,
+            last_message: {
+              id: normalized.serverID || normalized.id,
+              from_user_id: existing.user_id,
+              to_user_id: null,
+              body: normalized.body,
+              created_at: normalized.createdAt,
+            },
+          },
+        };
+      });
 
       if (selectedUsername !== lastWsMessage.from) {
         setUnreadByUser((prev) => ({
@@ -795,6 +1032,11 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       if (aUnread !== bUnread) {
         return bUnread - aUnread;
       }
+      const aLastCreatedAt = Date.parse(threadSummaries[a.username]?.last_message?.created_at || "");
+      const bLastCreatedAt = Date.parse(threadSummaries[b.username]?.last_message?.created_at || "");
+      if (Number.isFinite(aLastCreatedAt) && Number.isFinite(bLastCreatedAt) && aLastCreatedAt !== bLastCreatedAt) {
+        return bLastCreatedAt - aLastCreatedAt;
+      }
       const aOnline = onlineUsers.includes(a.username) ? 1 : 0;
       const bOnline = onlineUsers.includes(b.username) ? 1 : 0;
       if (aOnline !== bOnline) {
@@ -802,7 +1044,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       }
       return a.username.localeCompare(b.username);
     });
-  }, [contacts, onlineUsers, query, unreadByUser]);
+  }, [contacts, onlineUsers, query, threadSummaries, unreadByUser]);
 
   const handleSelectContact = (contact) => {
     setSelectedContact(contact);
@@ -925,6 +1167,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             <ul>
               {filteredContacts.map((contact) => {
                 const unread = unreadByUser[contact.username] || 0;
+                const summary = threadSummaries[contact.username];
                 return (
                   <li key={contact.id} onClick={() => handleSelectContact(contact)}>
                     <Avatar className={`avatar-placeholder ${onlineUsers.includes(contact.username) ? "online" : ""}`}>
@@ -934,6 +1177,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
                     <div className="contact-meta">
                       <span>{contact.display_name || contact.username}</span>
                       <small>{onlineUsers.includes(contact.username) ? "Online" : "Offline"}</small>
+                      {summary && <small className="contact-preview">{formatThreadPreview(summary)}</small>}
                     </div>
                     {unread > 0 && <span className="unread-pill">{unread}</span>}
                   </li>

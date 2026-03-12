@@ -228,6 +228,20 @@ func (f *fakeTransport) SendDirect(toUserID int, msg coremsg.Message) bool {
 	return f.ok
 }
 
+type fakeThreadSummaryService struct {
+	summaries  []coremsg.ThreadSummary
+	err        error
+	lastUserID int
+	lastLimit  int
+}
+
+func (f *fakeThreadSummaryService) ListThreadSummaries(ctx context.Context, userID int, limit int) ([]coremsg.ThreadSummary, error) {
+	_ = ctx
+	f.lastUserID = userID
+	f.lastLimit = limit
+	return f.summaries, f.err
+}
+
 func TestMessagesHandler_GetInbox_UsesPersistenceServiceAndSupportsLimit(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	delivered := now.Add(1 * time.Minute)
@@ -311,6 +325,108 @@ func TestMessagesHandler_GetOutbox_UsesPersistenceServiceAndSupportsLimit(t *tes
 	if got := int(resp[0]["from_user_id"].(float64)); got != 2 {
 		t.Fatalf("from_user_id = %d, want 2", got)
 	}
+}
+
+func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	delivered := now.Add(time.Minute)
+	svc := &fakeThreadSummaryService{
+		summaries: []coremsg.ThreadSummary{{
+			CounterpartyUserID:      7,
+			CounterpartyUsername:    "alice",
+			CounterpartyDisplayName: "Alice",
+			CounterpartyAvatarURL:   "https://example.com/alice.png",
+			LastMessageID:           91,
+			LastMessageFromUserID:   7,
+			LastMessageToUserID:     2,
+			LastMessageBody:         "hello",
+			LastMessageCreatedAt:    now,
+			LastDeliveredAt:         &delivered,
+			UnreadCount:             2,
+		}},
+	}
+	h := &MessagesHandler{Threads: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messaging/threads?limit=15", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+
+	h.GetThreads(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rr.Code, rr.Body.String())
+	}
+	if svc.lastUserID != 2 || svc.lastLimit != 15 {
+		t.Fatalf("unexpected service call user=%d limit=%d", svc.lastUserID, svc.lastLimit)
+	}
+
+	var resp []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(resp))
+	}
+	if got := int(resp[0]["user_id"].(float64)); got != 7 {
+		t.Fatalf("user_id = %d, want 7", got)
+	}
+	if got := resp[0]["username"].(string); got != "alice" {
+		t.Fatalf("username = %q, want alice", got)
+	}
+	if got := int(resp[0]["unread_count"].(float64)); got != 2 {
+		t.Fatalf("unread_count = %d, want 2", got)
+	}
+	lastMessage := resp[0]["last_message"].(map[string]any)
+	if got := int64(lastMessage["id"].(float64)); got != 91 {
+		t.Fatalf("last_message.id = %d, want 91", got)
+	}
+	if got := lastMessage["body"].(string); got != "hello" {
+		t.Fatalf("last_message.body = %q, want hello", got)
+	}
+	if _, ok := lastMessage["delivered_at"]; !ok {
+		t.Fatal("expected delivered_at on last_message")
+	}
+}
+
+func TestMessagesHandler_GetThreads_MapsErrorsAndInvalidLimit(t *testing.T) {
+	t.Run("invalid limit", func(t *testing.T) {
+		h := &MessagesHandler{Threads: &fakeThreadSummaryService{}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messaging/threads?limit=abc", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetThreads(rr, req)
+
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("service unavailable without thread service", func(t *testing.T) {
+		h := &MessagesHandler{}
+		req := httptest.NewRequest(http.MethodGet, "/api/messaging/threads", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetThreads(rr, req)
+
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status = %d, want 503", rr.Code)
+		}
+	})
+
+	t.Run("thread service errors map to 500", func(t *testing.T) {
+		h := &MessagesHandler{Threads: &fakeThreadSummaryService{err: errors.New("db down")}}
+		req := httptest.NewRequest(http.MethodGet, "/api/messaging/threads", nil)
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.GetThreads(rr, req)
+
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rr.Code)
+		}
+	})
 }
 
 func TestMessagesHandler_GetOutbox_SupportsBeforeAndAfterCursors(t *testing.T) {

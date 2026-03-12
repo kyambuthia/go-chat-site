@@ -26,6 +26,7 @@ Wallet compatibility routes (current behavior retained):
 - `POST /api/wallet/send`
 
 Messaging sync:
+- `GET /api/messaging/threads`
 - `GET /api/messaging/sync`
 
 Realtime:

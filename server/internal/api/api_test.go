@@ -910,6 +910,114 @@ func TestMessagingSyncRoute_CursorStream(t *testing.T) {
 	}
 }
 
+func TestMessagingThreadsRoute_DurableThreadSummaries(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	charlieID, err := s.CreateUser("charlie", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.DB.Exec(`UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?`, "Alice", "https://example.com/alice.png", aliceID); err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(bobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES
+		(?, ?, ?),
+		(?, ?, ?),
+		(?, ?, ?)`,
+		aliceID, bobID, "alice-1",
+		bobID, aliceID, "bob-2",
+		charlieID, bobID, "charlie-3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	aliceLatestID := lastID - 1
+
+	if _, err := s.DB.Exec(`INSERT INTO message_deliveries (message_id, delivered_at, read_at) VALUES (?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, aliceLatestID); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := wsrelay.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	for _, route := range []string{
+		"/api/messaging/threads?limit=10",
+		"/api/messages/threads?limit=10",
+	} {
+		req := httptest.NewRequest(http.MethodGet, route, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rr := httptest.NewRecorder()
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200; body=%s", route, rr.Code, rr.Body.String())
+		}
+
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("%s unmarshal response: %v", route, err)
+		}
+		if len(resp) != 2 {
+			t.Fatalf("%s expected 2 summaries, got %d", route, len(resp))
+		}
+		if got := resp[0]["username"].(string); got != "charlie" {
+			t.Fatalf("%s first username = %q, want charlie", route, got)
+		}
+		if got := int(resp[0]["unread_count"].(float64)); got != 1 {
+			t.Fatalf("%s first unread_count = %d, want 1", route, got)
+		}
+		if got := resp[1]["username"].(string); got != "alice" {
+			t.Fatalf("%s second username = %q, want alice", route, got)
+		}
+		if got := resp[1]["display_name"].(string); got != "Alice" {
+			t.Fatalf("%s display_name = %q, want Alice", route, got)
+		}
+		if got := resp[1]["avatar_url"].(string); got != "https://example.com/alice.png" {
+			t.Fatalf("%s avatar_url = %q", route, got)
+		}
+		lastMessage := resp[1]["last_message"].(map[string]any)
+		if got := int64(lastMessage["id"].(float64)); got != aliceLatestID {
+			t.Fatalf("%s last_message.id = %d, want %d", route, got, aliceLatestID)
+		}
+		if got := lastMessage["body"].(string); got != "bob-2" {
+			t.Fatalf("%s last_message.body = %q, want bob-2", route, got)
+		}
+		if _, ok := lastMessage["read_at"]; !ok {
+			t.Fatalf("%s expected read_at on alice thread", route)
+		}
+	}
+}
+
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
 	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
 		t.Fatal(err)

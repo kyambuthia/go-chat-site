@@ -21,6 +21,7 @@ function App() {
   const [invites, setInvites] = useState([]);
   const [lastWsMessage, setLastWsMessage] = useState(null);
   const [wsStatus, setWsStatus] = useState("offline");
+  const [syncToken, setSyncToken] = useState(0);
 
   const reconnectAttemptRef = useRef(0);
   const reconnectTimerRef = useRef(null);
@@ -88,6 +89,7 @@ function App() {
         }
         reconnectAttemptRef.current = 0;
         setWsStatus("online");
+        setSyncToken((current) => current + 1);
       };
 
       socket.onclose = () => {
@@ -152,6 +154,23 @@ function App() {
     };
   }, [isLoggedIn]);
 
+  useEffect(() => {
+    if (!isLoggedIn || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setSyncToken((current) => current + 1);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isLoggedIn]);
+
   const handleLogin = (token) => {
     localStorage.setItem("token", token);
     setToken(token);
@@ -178,6 +197,7 @@ function App() {
     setSelectedContact(null);
     setInvites([]);
     setWsStatus("offline");
+    setSyncToken(0);
   };
 
   useEffect(() => {
@@ -214,6 +234,7 @@ function App() {
             setSelectedContact={setSelectedContact}
             onlineUsers={onlineUsers}
             lastWsMessage={lastWsMessage}
+            syncToken={syncToken}
           />
         );
       case "contacts":
@@ -235,6 +256,7 @@ function App() {
             setSelectedContact={setSelectedContact}
             onlineUsers={onlineUsers}
             lastWsMessage={lastWsMessage}
+            syncToken={syncToken}
           />
         );
     }
