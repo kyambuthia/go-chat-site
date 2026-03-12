@@ -144,6 +144,8 @@ export const getInbox = (params = {}) => apiRequest(`/api/messages/inbox${buildQ
 
 export const getOutbox = (params = {}) => apiRequest(`/api/messages/outbox${buildQueryString(params)}`);
 
+export const syncMessages = (params = {}) => apiRequest(`/api/messaging/sync${buildQueryString(params)}`);
+
 export const markMessageRead = (messageID) =>
   apiRequest("/api/messages/read", {
     method: "POST",

@@ -13,6 +13,7 @@ import {
   sendMoney,
   setAuthErrorHandler,
   setToken,
+  syncMessages,
   updateMe,
 } from "../api.js";
 
@@ -130,6 +131,21 @@ test("getOutbox sends pagination query params", async () => {
   await getOutbox({ afterID: 9, limit: 10 });
 
   assert.equal(capturedURL, "http://localhost:8080/api/messages/outbox?limit=10&after_id=9");
+});
+
+test("syncMessages sends cursor query params to messaging sync endpoint", async () => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  setToken("token-sync");
+
+  let capturedURL = "";
+  global.fetch = async (url) => {
+    capturedURL = url;
+    return jsonResponse(200, { messages: [] });
+  };
+
+  await syncMessages({ afterID: 12, limit: 20 });
+
+  assert.equal(capturedURL, "http://localhost:8080/api/messaging/sync?limit=20&after_id=12");
 });
 
 test("markMessageRead posts message id", async () => {

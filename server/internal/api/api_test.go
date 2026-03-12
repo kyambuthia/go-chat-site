@@ -812,6 +812,104 @@ func TestMessagesInboxRoute_AdditiveSyncEndpoint(t *testing.T) {
 	})
 }
 
+func TestMessagingSyncRoute_CursorStream(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(bobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES
+		(?, ?, ?),
+		(?, ?, ?),
+		(?, ?, ?),
+		(?, ?, ?)`,
+		aliceID, bobID, "in-1",
+		bobID, aliceID, "out-2",
+		aliceID, bobID, "in-3",
+		bobID, aliceID, "out-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstID := lastID - 3
+
+	if _, err := s.DB.Exec(`INSERT INTO message_deliveries (message_id, delivered_at) VALUES (?, CURRENT_TIMESTAMP)`, lastID); err != nil {
+		t.Fatal(err)
+	}
+
+	hub := wsrelay.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messaging/sync?after_id="+strconv.FormatInt(firstID, 10)+"&limit=2", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	apiHandler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal sync response: %v", err)
+	}
+	if got := resp["has_more"].(bool); !got {
+		t.Fatal("expected has_more to be true")
+	}
+
+	cursor := resp["cursor"].(map[string]any)
+	if got := int64(cursor["after_id"].(float64)); got != firstID {
+		t.Fatalf("cursor.after_id = %d, want %d", got, firstID)
+	}
+	if got := int64(cursor["next_after_id"].(float64)); got != firstID+2 {
+		t.Fatalf("cursor.next_after_id = %d, want %d", got, firstID+2)
+	}
+
+	messages := resp["messages"].([]any)
+	if len(messages) != 2 {
+		t.Fatalf("messages len = %d, want 2", len(messages))
+	}
+
+	first := messages[0].(map[string]any)
+	second := messages[1].(map[string]any)
+	if got := int64(first["id"].(float64)); got != firstID+1 {
+		t.Fatalf("first id = %d, want %d", got, firstID+1)
+	}
+	if got := int64(second["id"].(float64)); got != firstID+2 {
+		t.Fatalf("second id = %d, want %d", got, firstID+2)
+	}
+	if _, ok := second["delivered_at"]; ok {
+		t.Fatal("did not expect delivered_at on unsynced middle message")
+	}
+}
+
 func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
 	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
 		t.Fatal(err)

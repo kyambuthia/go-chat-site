@@ -182,6 +182,60 @@ func (h *MessagesHandler) GetInbox(w http.ResponseWriter, r *http.Request) {
 	writeStoredMessagesJSON(w, inbox)
 }
 
+func (h *MessagesHandler) GetSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+	if h.Messaging == nil {
+		web.JSONError(w, errors.New("messaging sync unavailable"), http.StatusServiceUnavailable)
+		return
+	}
+
+	limit := 0
+	afterID := int64(0)
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid limit"), http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+	if raw := r.URL.Query().Get("after_id"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 0 {
+			web.JSONError(w, errors.New("invalid after_id"), http.StatusBadRequest)
+			return
+		}
+		afterID = n
+	}
+
+	result, err := coremsg.NewSyncService(h.Messaging).Sync(r.Context(), userID, afterID, limit)
+	if err != nil {
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]any{
+		"cursor": map[string]any{
+			"after_id":      result.Cursor.AfterID,
+			"next_after_id": result.Cursor.NextAfterID,
+		},
+		"messages": storedMessagesToJSON(result.Messages),
+		"has_more": result.HasMore,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
@@ -295,6 +349,11 @@ func (h *MessagesHandler) tryPushReceipt(senderUserID int, kind coremsg.MessageK
 }
 
 func writeStoredMessagesJSON(w http.ResponseWriter, msgs []coremsg.StoredMessage) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(storedMessagesToJSON(msgs))
+}
+
+func storedMessagesToJSON(msgs []coremsg.StoredMessage) []map[string]any {
 	resp := make([]map[string]any, 0, len(msgs))
 	for _, msg := range msgs {
 		item := map[string]any{
@@ -312,7 +371,5 @@ func writeStoredMessagesJSON(w http.ResponseWriter, msgs []coremsg.StoredMessage
 		}
 		resp = append(resp, item)
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	return resp
 }

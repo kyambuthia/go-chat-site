@@ -25,6 +25,9 @@ Wallet compatibility routes (current behavior retained):
 - `GET /api/wallet/transfers`
 - `POST /api/wallet/send`
 
+Messaging sync:
+- `GET /api/messaging/sync`
+
 Realtime:
 - `GET /ws` (WebSocket upgrade)
 
@@ -69,7 +72,6 @@ Medium-term:
 ### Messaging / Signaling
 - `POST /api/messaging/sessions` (issue signaling/session descriptors)
 - `POST /api/messaging/prekeys` (if E2EE protocol requires server-hosted prekeys)
-- `GET /api/messaging/sync` (offline event/message sync)
 
 ### Ledger / Escrow
 - `GET /api/ledger/account`
