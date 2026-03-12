@@ -423,6 +423,7 @@ button.accept {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .message.sent .message-meta {
@@ -437,6 +438,21 @@ button.accept {
 .message-status-icon {
   display: inline-flex;
   color: #111;
+}
+
+.message-status-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.message-status-label.is-error {
+  color: #111;
+}
+
+.message-inline-error {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--muted);
 }
 
 .composer-shell {
@@ -808,6 +824,7 @@ button.accept {
 
 .account-page .user-card,
 .account-page .wallet-card,
+.account-page .profile-card,
 .send-money-form {
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -816,10 +833,49 @@ button.accept {
   background: #fff;
 }
 
-.account-page .wallet-card p {
+.account-page .wallet-card p,
+.account-page .profile-card p {
+  margin: 0;
+}
+
+.account-page .wallet-balance {
   font-size: 1.45rem;
   font-weight: 700;
   color: #111;
+}
+
+.account-page .card-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-bottom: var(--space-4);
+}
+
+.account-page .card-heading svg {
+  color: #111;
+  flex-shrink: 0;
+}
+
+.account-avatar {
+  width: 56px;
+  height: 56px;
+  min-width: 56px;
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.secondary-button {
+  background: #fff;
+  color: #111;
+  border-color: var(--line);
+}
+
+.secondary-button:hover {
+  border-color: #111;
 }
 
 .account-page .logout-button {
@@ -890,6 +946,65 @@ button.accept {
   margin-bottom: var(--space-2);
   color: #111;
   font-weight: 700;
+}
+
+.transfer-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.transfer-history-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.transfer-history-item:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.transfer-avatar {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+}
+
+.transfer-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.transfer-copy strong,
+.transfer-copy span,
+.transfer-copy time {
+  display: block;
+}
+
+.transfer-copy span,
+.transfer-copy time {
+  color: #5f5f5f;
+  font-size: 0.85rem;
+}
+
+.transfer-amount {
+  margin-left: auto;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.transfer-amount.is-positive {
+  color: #0f766e;
+}
+
+.transfer-amount.is-negative {
+  color: #111;
 }
 
 .success-message,

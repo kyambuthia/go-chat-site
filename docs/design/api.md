@@ -11,6 +11,7 @@ Authentication and profile:
 - `POST /api/register`
 - `POST /api/login`
 - `GET /api/me`
+- `PATCH /api/me`
 
 Contacts and invites:
 - `GET /api/contacts`
@@ -21,6 +22,7 @@ Contacts and invites:
 
 Wallet compatibility routes (current behavior retained):
 - `GET /api/wallet`
+- `GET /api/wallet/transfers`
 - `POST /api/wallet/send`
 
 Realtime:

@@ -30,6 +30,30 @@ func (a *Adapter) GetAccount(ctx context.Context, userID int) (coreledger.Accoun
 	}, nil
 }
 
+func (a *Adapter) ListTransfers(ctx context.Context, userID int, limit int) ([]coreledger.TransferRecord, error) {
+	_ = ctx
+	transfers, err := a.WalletStore.ListTransfers(userID, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]coreledger.TransferRecord, 0, len(transfers))
+	for _, transfer := range transfers {
+		out = append(out, coreledger.TransferRecord{
+			ID:                      fmt.Sprintf("%d", transfer.ID),
+			Direction:               transfer.Direction,
+			CounterpartyUserID:      transfer.CounterpartyUserID,
+			CounterpartyUsername:    transfer.CounterpartyUsername,
+			CounterpartyDisplayName: transfer.CounterpartyDisplayName,
+			CounterpartyAvatarURL:   transfer.CounterpartyAvatarURL,
+			AmountCents:             transfer.AmountCents,
+			CurrencyCode:            "USD",
+			CreatedAt:               transfer.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
 func (a *Adapter) Transfer(ctx context.Context, transfer coreledger.Transfer) (coreledger.Transfer, error) {
 	_ = ctx
 	if err := a.WalletStore.SendMoney(transfer.FromUserID, transfer.ToUserID, transfer.AmountCents); err != nil {

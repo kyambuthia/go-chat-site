@@ -9,15 +9,30 @@ import (
 type fakeRepo struct {
 	accountResp  Account
 	accountErr   error
+	historyResp  []TransferRecord
+	historyErr   error
 	transferResp Transfer
 	transferErr  error
 	lastTransfer Transfer
+	lastHistory  struct {
+		userID int
+		limit  int
+	}
 }
 
 func (f *fakeRepo) GetAccount(ctx context.Context, userID int) (Account, error) {
 	_ = ctx
 	_ = userID
 	return f.accountResp, f.accountErr
+}
+
+func (f *fakeRepo) ListTransfers(ctx context.Context, userID int, limit int) ([]TransferRecord, error) {
+	_ = ctx
+	f.lastHistory = struct {
+		userID int
+		limit  int
+	}{userID: userID, limit: limit}
+	return f.historyResp, f.historyErr
 }
 
 func (f *fakeRepo) Transfer(ctx context.Context, transfer Transfer) (Transfer, error) {
@@ -75,6 +90,29 @@ func TestService_SendTransferByUsername_ResolvesRecipientAndCallsRepository(t *t
 	}
 	if transfer.ToUserID != 22 || transfer.AmountCents != 1250 {
 		t.Fatalf("unexpected transfer response: %+v", transfer)
+	}
+}
+
+func TestService_ListTransfers_DelegatesToRepository(t *testing.T) {
+	repo := &fakeRepo{historyResp: []TransferRecord{{
+		ID:                   "9",
+		Direction:            "sent",
+		CounterpartyUserID:   22,
+		CounterpartyUsername: "bob",
+		AmountCents:          1250,
+		CurrencyCode:         "USD",
+	}}}
+	svc := NewService(repo, &fakeDirectory{})
+
+	got, err := svc.ListTransfers(context.Background(), 11, 8)
+	if err != nil {
+		t.Fatalf("ListTransfers returned error: %v", err)
+	}
+	if repo.lastHistory.userID != 11 || repo.lastHistory.limit != 8 {
+		t.Fatalf("unexpected history query: %+v", repo.lastHistory)
+	}
+	if len(got) != 1 || got[0].CounterpartyUsername != "bob" {
+		t.Fatalf("unexpected history: %+v", got)
 	}
 }
 

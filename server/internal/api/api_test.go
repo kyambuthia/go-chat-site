@@ -403,6 +403,32 @@ func TestMeAndWalletRoutes_Compatibility(t *testing.T) {
 		}
 	})
 
+	t.Run("me route supports patch updates", func(t *testing.T) {
+		body, _ := json.Marshal(map[string]any{
+			"display_name": "Alice Doe",
+			"avatar_url":   "https://example.com/alice.png",
+		})
+		req := httptest.NewRequest(http.MethodPatch, "/api/me", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+
+		var displayName, avatarURL string
+		if err := s.DB.QueryRow(`SELECT COALESCE(display_name, ''), COALESCE(avatar_url, '') FROM users WHERE id = ?`, aliceID).
+			Scan(&displayName, &avatarURL); err != nil {
+			t.Fatal(err)
+		}
+		if displayName != "Alice Doe" || avatarURL != "https://example.com/alice.png" {
+			t.Fatalf("unexpected persisted profile: display_name=%q avatar_url=%q", displayName, avatarURL)
+		}
+	})
+
 	t.Run("wallet get route preserves response shape", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/wallet", nil)
 		req.Header.Set("Authorization", "Bearer "+aliceToken)
@@ -457,6 +483,35 @@ func TestMeAndWalletRoutes_Compatibility(t *testing.T) {
 		apiHandler.ServeHTTP(rr, req)
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("send insufficient status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+		}
+	})
+
+	t.Run("wallet transfer history returns recent transactions", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/wallet/transfers?limit=5", nil)
+		req.Header.Set("Authorization", "Bearer "+aliceToken)
+		rr := httptest.NewRecorder()
+
+		apiHandler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+		}
+
+		var resp []map[string]any
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal transfer history: %v", err)
+		}
+		if len(resp) == 0 {
+			t.Fatal("expected at least one transfer")
+		}
+		if got := resp[0]["direction"].(string); got != "sent" {
+			t.Fatalf("direction = %q, want sent", got)
+		}
+		if got := resp[0]["counterparty_username"].(string); got != "bob" {
+			t.Fatalf("counterparty_username = %q, want bob", got)
+		}
+		if _, ok := resp[0]["counterparty_avatar_url"]; !ok {
+			t.Fatal("expected counterparty_avatar_url field")
 		}
 	})
 }

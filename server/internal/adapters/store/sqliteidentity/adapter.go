@@ -26,3 +26,17 @@ func (a *Adapter) GetProfile(ctx context.Context, userID coreid.UserID) (coreid.
 		AvatarURL:   user.AvatarURL,
 	}, nil
 }
+
+func (a *Adapter) UpdateProfile(ctx context.Context, userID coreid.UserID, update coreid.ProfileUpdate) (coreid.Profile, error) {
+	_ = ctx
+	user, err := a.Store.UpdateUserProfile(int(userID), update.DisplayName, update.AvatarURL)
+	if err != nil {
+		return coreid.Profile{}, err
+	}
+	return coreid.Profile{
+		UserID:      coreid.UserID(user.ID),
+		Username:    user.Username,
+		DisplayName: user.DisplayName,
+		AvatarURL:   user.AvatarURL,
+	}, nil
+}

@@ -65,3 +65,24 @@ func (s *SqliteStore) GetUserByID(id int) (*User, error) {
 	}
 	return user, nil
 }
+
+func (s *SqliteStore) UpdateUserProfile(id int, displayName, avatarURL string) (*User, error) {
+	result, err := s.DB.Exec(`
+		UPDATE users
+		SET display_name = ?, avatar_url = ?
+		WHERE id = ?
+	`, strings.TrimSpace(displayName), strings.TrimSpace(avatarURL), id)
+	if err != nil {
+		return nil, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if rowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+
+	return s.GetUserByID(id)
+}

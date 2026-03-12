@@ -47,6 +47,54 @@ func (h *WalletHandler) GetWallet(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *WalletHandler) GetTransfers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
+	limit := 0
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n <= 0 {
+			web.JSONError(w, errors.New("invalid limit"), http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+
+	transfers, err := h.Ledger.ListTransfers(r.Context(), userID, limit)
+	if err != nil {
+		web.JSONError(w, err, http.StatusInternalServerError)
+		return
+	}
+
+	resp := make([]map[string]any, 0, len(transfers))
+	for _, transfer := range transfers {
+		resp = append(resp, map[string]any{
+			"id":                        transfer.ID,
+			"direction":                 transfer.Direction,
+			"counterparty_user_id":      transfer.CounterpartyUserID,
+			"counterparty_username":     transfer.CounterpartyUsername,
+			"counterparty_display_name": transfer.CounterpartyDisplayName,
+			"counterparty_avatar_url":   transfer.CounterpartyAvatarURL,
+			"amount":                    float64(transfer.AmountCents) / 100.0,
+			"amount_cents":              transfer.AmountCents,
+			"currency_code":             transfer.CurrencyCode,
+			"created_at":                transfer.CreatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 func (h *WalletHandler) SendMoney(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)

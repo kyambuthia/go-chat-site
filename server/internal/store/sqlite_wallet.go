@@ -4,12 +4,24 @@ import (
 	"database/sql"
 	"errors"
 	"math"
+	"time"
 )
 
 type Wallet struct {
 	ID           int   `json:"id"`
 	UserID       int   `json:"user_id"`
 	BalanceCents int64 `json:"balance_cents"`
+}
+
+type WalletTransfer struct {
+	ID                      int
+	Direction               string
+	CounterpartyUserID      int
+	CounterpartyUsername    string
+	CounterpartyDisplayName string
+	CounterpartyAvatarURL   string
+	AmountCents             int64
+	CreatedAt               time.Time
 }
 
 func (w Wallet) BalanceFloat() float64 {
@@ -47,6 +59,57 @@ func (s *SqliteStore) GetWallet(userID int) (*Wallet, error) {
 	}
 
 	return &wallet, nil
+}
+
+func (s *SqliteStore) ListTransfers(userID, limit int) ([]WalletTransfer, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	rows, err := s.DB.Query(`
+		SELECT
+			wt.id,
+			CASE WHEN wt.sender_user_id = ? THEN 'sent' ELSE 'received' END AS direction,
+			CASE WHEN wt.sender_user_id = ? THEN wt.recipient_user_id ELSE wt.sender_user_id END AS counterparty_user_id,
+			u.username,
+			COALESCE(u.display_name, ''),
+			COALESCE(u.avatar_url, ''),
+			wt.amount_cents,
+			wt.created_at
+		FROM wallet_transfers wt
+		INNER JOIN users u
+			ON u.id = CASE WHEN wt.sender_user_id = ? THEN wt.recipient_user_id ELSE wt.sender_user_id END
+		WHERE wt.sender_user_id = ? OR wt.recipient_user_id = ?
+		ORDER BY wt.created_at DESC, wt.id DESC
+		LIMIT ?
+	`, userID, userID, userID, userID, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	transfers := make([]WalletTransfer, 0)
+	for rows.Next() {
+		var transfer WalletTransfer
+		if err := rows.Scan(
+			&transfer.ID,
+			&transfer.Direction,
+			&transfer.CounterpartyUserID,
+			&transfer.CounterpartyUsername,
+			&transfer.CounterpartyDisplayName,
+			&transfer.CounterpartyAvatarURL,
+			&transfer.AmountCents,
+			&transfer.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		transfers = append(transfers, transfer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return transfers, nil
 }
 
 func (s *SqliteStore) SendMoney(senderID, recipientID int, amountCents int64) error {

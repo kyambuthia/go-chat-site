@@ -26,14 +26,16 @@ type InviteStore interface {
 	UpdateInviteStatus(inviteID, userID int, status string) error
 }
 
-// MeStore handles profile read operations for the authenticated user.
+// MeStore handles profile read/update operations for the authenticated user.
 type MeStore interface {
 	GetUserByID(id int) (*User, error)
+	UpdateUserProfile(id int, displayName, avatarURL string) (*User, error)
 }
 
 // WalletStore handles wallet and transfer operations.
 type WalletStore interface {
 	GetWallet(userID int) (*Wallet, error)
+	ListTransfers(userID, limit int) ([]WalletTransfer, error)
 	GetUserByUsername(username string) (*User, error)
 	SendMoney(senderID, recipientID int, amountCents int64) error
 }

@@ -15,6 +15,7 @@ type UserDirectory interface {
 
 type Service interface {
 	GetAccount(ctx context.Context, userID int) (Account, error)
+	ListTransfers(ctx context.Context, userID int, limit int) ([]TransferRecord, error)
 	SendTransferByUsername(ctx context.Context, fromUserID int, recipientUsername string, amountCents int64) (Transfer, error)
 }
 
@@ -34,6 +35,10 @@ func NewService(repo Repository, users UserDirectory) *CoreService {
 
 func (s *CoreService) GetAccount(ctx context.Context, userID int) (Account, error) {
 	return s.repo.GetAccount(ctx, userID)
+}
+
+func (s *CoreService) ListTransfers(ctx context.Context, userID int, limit int) ([]TransferRecord, error) {
+	return s.repo.ListTransfers(ctx, userID, limit)
 }
 
 func (s *CoreService) SendTransferByUsername(ctx context.Context, fromUserID int, recipientUsername string, amountCents int64) (Transfer, error) {

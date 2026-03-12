@@ -72,8 +72,18 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.Handle("/api/invites/accept", auth.Middleware(http.HandlerFunc(inviteHandler.AcceptInvite)))
 	mux.Handle("/api/invites/reject", auth.Middleware(http.HandlerFunc(inviteHandler.RejectInvite)))
 
-	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(meHandler.GetMe)))
+	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			meHandler.GetMe(w, r)
+		case http.MethodPatch:
+			meHandler.UpdateMe(w, r)
+		default:
+			web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		}
+	})))
 	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
+	mux.Handle("/api/wallet/transfers", auth.Middleware(http.HandlerFunc(walletHandler.GetTransfers)))
 	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
 	mux.Handle("/api/messages/inbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetInbox)))
 	mux.Handle("/api/messages/outbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetOutbox)))

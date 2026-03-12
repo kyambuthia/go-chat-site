@@ -106,7 +106,16 @@ export const rejectInvite = (inviteID) =>
 
 export const getMe = () => apiRequest("/api/me");
 
+export const updateMe = (profile) =>
+  apiRequest("/api/me", {
+    method: "PATCH",
+    body: JSON.stringify(profile),
+  });
+
 export const getWallet = () => apiRequest("/api/wallet");
+
+export const getWalletTransfers = (params = {}) =>
+  apiRequest(`/api/wallet/transfers${buildQueryString(params)}`);
 
 const buildQueryString = (params = {}) => {
   const query = new URLSearchParams();

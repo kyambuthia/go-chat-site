@@ -35,6 +35,19 @@ type Transfer struct {
 	ExternalRailRef string
 }
 
+// TransferRecord is the current wallet-history view surfaced through compatibility routes.
+type TransferRecord struct {
+	ID                      string
+	Direction               string
+	CounterpartyUserID      int
+	CounterpartyUsername    string
+	CounterpartyDisplayName string
+	CounterpartyAvatarURL   string
+	AmountCents             int64
+	CurrencyCode            string
+	CreatedAt               time.Time
+}
+
 // Event is an append-only ledger event stub for future auditability/integration.
 type Event struct {
 	ID         string
@@ -47,5 +60,6 @@ type Event struct {
 // Repository is the persistence seam for current sqlite and future external ledger/payment rails.
 type Repository interface {
 	GetAccount(ctx context.Context, userID int) (Account, error)
+	ListTransfers(ctx context.Context, userID int, limit int) ([]TransferRecord, error)
 	Transfer(ctx context.Context, transfer Transfer) (Transfer, error)
 }

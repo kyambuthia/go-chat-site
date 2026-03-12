@@ -17,10 +17,14 @@ import (
 type fakeLedgerService struct {
 	accountResp  coreledger.Account
 	accountErr   error
+	historyResp  []coreledger.TransferRecord
+	historyErr   error
 	transferResp coreledger.Transfer
 	transferErr  error
 
 	lastGetUserID     int
+	lastHistoryUserID int
+	lastHistoryLimit  int
 	lastSenderID      int
 	lastRecipient     string
 	lastTransferCents int64
@@ -30,6 +34,13 @@ func (f *fakeLedgerService) GetAccount(ctx context.Context, userID int) (coreled
 	_ = ctx
 	f.lastGetUserID = userID
 	return f.accountResp, f.accountErr
+}
+
+func (f *fakeLedgerService) ListTransfers(ctx context.Context, userID int, limit int) ([]coreledger.TransferRecord, error) {
+	_ = ctx
+	f.lastHistoryUserID = userID
+	f.lastHistoryLimit = limit
+	return f.historyResp, f.historyErr
 }
 
 func (f *fakeLedgerService) SendTransferByUsername(ctx context.Context, fromUserID int, recipientUsername string, amountCents int64) (coreledger.Transfer, error) {
@@ -155,5 +166,46 @@ func TestWalletHandler_SendMoney_RejectsMissingAmountFields(t *testing.T) {
 	}
 	if !bytes.Contains(rr.Body.Bytes(), []byte("amount_cents is required")) {
 		t.Fatalf("expected amount_cents error body, got %q", rr.Body.String())
+	}
+}
+
+func TestWalletHandler_GetTransfers_UsesLedgerServiceAndPreservesResponseShape(t *testing.T) {
+	svc := &fakeLedgerService{historyResp: []coreledger.TransferRecord{{
+		ID:                      "9",
+		Direction:               "received",
+		CounterpartyUserID:      11,
+		CounterpartyUsername:    "bob",
+		CounterpartyDisplayName: "Bob",
+		CounterpartyAvatarURL:   "https://example.com/bob.png",
+		AmountCents:             700,
+		CurrencyCode:            "USD",
+	}}}
+	h := &WalletHandler{Ledger: svc}
+
+	rr := httptest.NewRecorder()
+	h.GetTransfers(rr, authReq(http.MethodGet, "/api/wallet/transfers?limit=5", nil, 42))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rr.Code, rr.Body.String())
+	}
+	if svc.lastHistoryUserID != 42 || svc.lastHistoryLimit != 5 {
+		t.Fatalf("unexpected history query user=%d limit=%d", svc.lastHistoryUserID, svc.lastHistoryLimit)
+	}
+
+	var resp []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp) != 1 {
+		t.Fatalf("resp len = %d, want 1", len(resp))
+	}
+	if got := resp[0]["direction"].(string); got != "received" {
+		t.Fatalf("direction = %q, want received", got)
+	}
+	if got := resp[0]["counterparty_username"].(string); got != "bob" {
+		t.Fatalf("counterparty_username = %q, want bob", got)
+	}
+	if got := int(resp[0]["amount_cents"].(float64)); got != 700 {
+		t.Fatalf("amount_cents = %d, want 700", got)
 	}
 }

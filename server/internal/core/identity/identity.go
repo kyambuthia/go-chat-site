@@ -19,6 +19,12 @@ type Profile struct {
 	AvatarURL   string
 }
 
+// ProfileUpdate carries mutable user-facing profile fields.
+type ProfileUpdate struct {
+	DisplayName string
+	AvatarURL   string
+}
+
 // PasswordCredential represents the current username/password auth mechanism.
 type PasswordCredential struct {
 	Username string

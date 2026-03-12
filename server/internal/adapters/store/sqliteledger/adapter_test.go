@@ -4,18 +4,21 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	coreledger "github.com/kyambuthia/go-chat-site/server/internal/core/ledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/store"
 )
 
 type fakeWalletStore struct {
-	wallet   *store.Wallet
-	user     *store.User
-	getErr   error
-	userErr  error
-	sendErr  error
-	lastSend struct {
+	wallet     *store.Wallet
+	history    []store.WalletTransfer
+	user       *store.User
+	getErr     error
+	historyErr error
+	userErr    error
+	sendErr    error
+	lastSend   struct {
 		from, to int
 		cents    int64
 	}
@@ -27,6 +30,14 @@ func (f *fakeWalletStore) GetWallet(userID int) (*store.Wallet, error) {
 		return nil, f.getErr
 	}
 	return f.wallet, nil
+}
+
+func (f *fakeWalletStore) ListTransfers(userID, limit int) ([]store.WalletTransfer, error) {
+	_, _ = userID, limit
+	if f.historyErr != nil {
+		return nil, f.historyErr
+	}
+	return f.history, nil
 }
 
 func (f *fakeWalletStore) GetUserByUsername(username string) (*store.User, error) {
@@ -83,5 +94,35 @@ func TestAdapter_Transfer_PropagatesStoreError(t *testing.T) {
 	_, err := a.Transfer(context.Background(), coreledger.Transfer{FromUserID: 1, ToUserID: 2, AmountCents: 1})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+}
+
+func TestAdapter_ListTransfers_MapsWalletHistoryToLedgerRecords(t *testing.T) {
+	createdAt := time.Date(2026, time.March, 12, 10, 0, 0, 0, time.UTC)
+	a := &Adapter{WalletStore: &fakeWalletStore{
+		history: []store.WalletTransfer{{
+			ID:                      5,
+			Direction:               "received",
+			CounterpartyUserID:      22,
+			CounterpartyUsername:    "bob",
+			CounterpartyDisplayName: "Bob",
+			CounterpartyAvatarURL:   "https://example.com/bob.png",
+			AmountCents:             450,
+			CreatedAt:               createdAt,
+		}},
+	}}
+
+	got, err := a.ListTransfers(context.Background(), 11, 10)
+	if err != nil {
+		t.Fatalf("ListTransfers error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("history len = %d, want 1", len(got))
+	}
+	if got[0].ID != "5" || got[0].CounterpartyUsername != "bob" || got[0].CurrencyCode != "USD" {
+		t.Fatalf("unexpected mapped transfer: %+v", got[0])
+	}
+	if !got[0].CreatedAt.Equal(createdAt) {
+		t.Fatalf("created_at = %v, want %v", got[0].CreatedAt, createdAt)
 	}
 }

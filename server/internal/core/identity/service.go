@@ -4,10 +4,12 @@ import "context"
 
 type ProfileRepository interface {
 	GetProfile(ctx context.Context, userID UserID) (Profile, error)
+	UpdateProfile(ctx context.Context, userID UserID, update ProfileUpdate) (Profile, error)
 }
 
 type ProfileService interface {
 	GetProfile(ctx context.Context, userID UserID) (Profile, error)
+	UpdateProfile(ctx context.Context, userID UserID, update ProfileUpdate) (Profile, error)
 }
 
 type profileService struct {
@@ -20,4 +22,8 @@ func NewProfileService(repo ProfileRepository) ProfileService {
 
 func (s *profileService) GetProfile(ctx context.Context, userID UserID) (Profile, error) {
 	return s.repo.GetProfile(ctx, userID)
+}
+
+func (s *profileService) UpdateProfile(ctx context.Context, userID UserID, update ProfileUpdate) (Profile, error) {
+	return s.repo.UpdateProfile(ctx, userID, update)
 }

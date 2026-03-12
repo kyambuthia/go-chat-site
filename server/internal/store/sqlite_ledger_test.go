@@ -3,6 +3,7 @@ package store
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/migrate"
 )
@@ -123,5 +124,50 @@ func TestSendMoney_TransferIsAtomicOnSuccess(t *testing.T) {
 	}
 	if transferCount != 1 {
 		t.Fatalf("transfer record count = %d, want 1", transferCount)
+	}
+}
+
+func TestListTransfers_ReturnsDirectionalHistoryWithCounterpartyMetadata(t *testing.T) {
+	s := newLedgerTestStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+
+	if _, err := s.DB.Exec(`UPDATE users SET display_name = ?, avatar_url = ? WHERE id = ?`, "Bob", "https://example.com/bob.png", bobID); err != nil {
+		t.Fatal(err)
+	}
+	setWalletBalance(t, s, aliceID, 10_000)
+	setWalletBalance(t, s, bobID, 500)
+
+	if err := s.SendMoney(aliceID, bobID, 2_500); err != nil {
+		t.Fatalf("SendMoney failed: %v", err)
+	}
+	if _, err := s.DB.Exec(`INSERT INTO wallet_transfers (sender_user_id, recipient_user_id, amount_cents, created_at) VALUES (?, ?, ?, ?)`,
+		bobID, aliceID, 700, time.Date(2026, time.March, 12, 11, 30, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+
+	history, err := s.ListTransfers(aliceID, 10)
+	if err != nil {
+		t.Fatalf("ListTransfers failed: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("history len = %d, want 2", len(history))
+	}
+
+	var sawSent bool
+	var sawReceived bool
+	for _, transfer := range history {
+		if transfer.CounterpartyDisplayName != "Bob" || transfer.CounterpartyAvatarURL != "https://example.com/bob.png" {
+			t.Fatalf("missing counterparty metadata: %+v", transfer)
+		}
+		if transfer.Direction == "sent" && transfer.AmountCents == 2500 {
+			sawSent = true
+		}
+		if transfer.Direction == "received" && transfer.AmountCents == 700 && transfer.CounterpartyUsername == "bob" {
+			sawReceived = true
+		}
+	}
+	if !sawSent || !sawReceived {
+		t.Fatalf("expected both sent and received transfers, got %+v", history)
 	}
 }
