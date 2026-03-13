@@ -46,24 +46,56 @@ func (f *fakePasswordVerifier) VerifyPassword(password, hash string) bool {
 }
 
 type fakeTokenService struct {
-	token         string
+	tokens        SessionTokens
 	err           error
 	lastPrincipal Principal
+	lastMeta      SessionMetadata
 }
 
-func (f *fakeTokenService) IssueToken(ctx context.Context, principal Principal) (string, error) {
+func (f *fakeTokenService) IssueSession(ctx context.Context, principal Principal, meta SessionMetadata) (SessionTokens, error) {
 	_ = ctx
 	f.lastPrincipal = principal
+	f.lastMeta = meta
 	if f.err != nil {
-		return "", f.err
+		return SessionTokens{}, f.err
 	}
-	return f.token, nil
+	return f.tokens, nil
+}
+
+func (f *fakeTokenService) RefreshSession(ctx context.Context, refreshToken string, meta SessionMetadata) (SessionTokens, error) {
+	_ = ctx
+	_ = refreshToken
+	f.lastMeta = meta
+	if f.err != nil {
+		return SessionTokens{}, f.err
+	}
+	return f.tokens, nil
 }
 
 func (f *fakeTokenService) ValidateToken(ctx context.Context, token string) (TokenClaims, error) {
 	_ = ctx
 	_ = token
 	return TokenClaims{}, nil
+}
+
+func (f *fakeTokenService) ListSessions(ctx context.Context, userID UserID) ([]Session, error) {
+	_ = ctx
+	_ = userID
+	return nil, nil
+}
+
+func (f *fakeTokenService) RevokeSession(ctx context.Context, actorUserID UserID, sessionID int64) error {
+	_ = ctx
+	_ = actorUserID
+	_ = sessionID
+	return nil
+}
+
+func (f *fakeTokenService) TouchSession(ctx context.Context, sessionID int64, meta SessionMetadata) error {
+	_ = ctx
+	_ = sessionID
+	f.lastMeta = meta
+	return nil
 }
 
 func TestAuthService_RegisterPassword_DelegatesToRepository(t *testing.T) {
@@ -90,10 +122,14 @@ func TestAuthService_LoginPassword_IssuesTokenForValidCredentials(t *testing.T) 
 		},
 	}
 	verifier := &fakePasswordVerifier{ok: true}
-	tokens := &fakeTokenService{token: "jwt-token"}
+	tokens := &fakeTokenService{tokens: SessionTokens{AccessToken: "jwt-token", RefreshToken: "refresh-token"}}
 	svc := NewAuthService(repo, verifier, tokens)
 
-	token, err := svc.LoginPassword(context.Background(), PasswordCredential{Username: "alice", Password: "password123"})
+	got, err := svc.LoginPassword(context.Background(), PasswordCredential{Username: "alice", Password: "password123"}, SessionMetadata{
+		DeviceLabel: "MacBook",
+		UserAgent:   "test-agent",
+		IPAddress:   "127.0.0.1",
+	})
 	if err != nil {
 		t.Fatalf("LoginPassword error: %v", err)
 	}
@@ -106,8 +142,11 @@ func TestAuthService_LoginPassword_IssuesTokenForValidCredentials(t *testing.T) 
 	if tokens.lastPrincipal.ID != 7 || tokens.lastPrincipal.Username != "alice" {
 		t.Fatalf("unexpected principal passed to token service: %+v", tokens.lastPrincipal)
 	}
-	if token != "jwt-token" {
-		t.Fatalf("token = %q, want jwt-token", token)
+	if tokens.lastMeta.DeviceLabel != "MacBook" || tokens.lastMeta.UserAgent != "test-agent" || tokens.lastMeta.IPAddress != "127.0.0.1" {
+		t.Fatalf("unexpected login metadata: %+v", tokens.lastMeta)
+	}
+	if got.AccessToken != "jwt-token" || got.RefreshToken != "refresh-token" {
+		t.Fatalf("unexpected tokens: %+v", got)
 	}
 }
 
@@ -116,7 +155,7 @@ func TestAuthService_LoginPassword_ReturnsInvalidCredentials(t *testing.T) {
 		repo := &fakeAuthRepo{loginErr: errors.New("not found")}
 		svc := NewAuthService(repo, &fakePasswordVerifier{}, &fakeTokenService{})
 
-		_, err := svc.LoginPassword(context.Background(), PasswordCredential{Username: "alice", Password: "pw"})
+		_, err := svc.LoginPassword(context.Background(), PasswordCredential{Username: "alice", Password: "pw"}, SessionMetadata{})
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}
@@ -129,7 +168,7 @@ func TestAuthService_LoginPassword_ReturnsInvalidCredentials(t *testing.T) {
 		verifier := &fakePasswordVerifier{ok: false}
 		svc := NewAuthService(repo, verifier, &fakeTokenService{})
 
-		_, err := svc.LoginPassword(context.Background(), PasswordCredential{Username: "alice", Password: "wrong"})
+		_, err := svc.LoginPassword(context.Background(), PasswordCredential{Username: "alice", Password: "wrong"}, SessionMetadata{})
 		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 		}

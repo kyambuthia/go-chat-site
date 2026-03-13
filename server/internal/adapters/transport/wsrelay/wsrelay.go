@@ -15,14 +15,15 @@ import (
 	coremsg "github.com/kyambuthia/go-chat-site/server/internal/core/messaging"
 )
 
-// Authenticator validates a bearer token and returns (userID, username, error).
-type Authenticator func(token string) (userID int, username string, err error)
+// Authenticator validates a bearer token and returns (userID, username, sessionID, error).
+type Authenticator func(token string) (userID int, username string, sessionID int64, err error)
 
 type Message = coremsg.Message
 
 type client struct {
 	userID          int
 	username        string
+	sessionID       int64
 	conn            *websocket.Conn
 	send            chan Message
 	sendMu          sync.RWMutex
@@ -138,6 +139,27 @@ func (h *Hub) RemoveClient(c *client) {
 	c.close()
 	if isLastSession {
 		go h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOffline, From: c.username})
+	}
+}
+
+func (h *Hub) DisconnectSession(sessionID int64) {
+	if sessionID <= 0 {
+		return
+	}
+
+	h.mu.RLock()
+	matches := make([]*client, 0)
+	for _, userClients := range h.clients {
+		for c := range userClients {
+			if c.sessionID == sessionID {
+				matches = append(matches, c)
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	for _, c := range matches {
+		h.RemoveClient(c)
 	}
 }
 
@@ -369,7 +391,7 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 			return
 		}
 
-		userID, username, err := authenticator(token)
+		userID, username, sessionID, err := authenticator(token)
 		if err != nil {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
@@ -385,6 +407,7 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 		c := &client{
 			userID:          userID,
 			username:        username,
+			sessionID:       sessionID,
 			conn:            conn,
 			send:            make(chan Message, 16),
 			hub:             h,
@@ -403,11 +426,11 @@ func WebSocketHandler(h *Hub, authenticator Authenticator, resolveToUserID func(
 }
 
 func ExampleAuthenticatorForTests(validToken string, userID int, username string) Authenticator {
-	return func(token string) (int, string, error) {
+	return func(token string) (int, string, int64, error) {
 		if token != validToken {
-			return 0, "", errors.New("invalid token")
+			return 0, "", 0, errors.New("invalid token")
 		}
-		return userID, username, nil
+		return userID, username, int64(userID), nil
 	}
 }
 

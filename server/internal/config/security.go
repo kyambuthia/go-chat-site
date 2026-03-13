@@ -6,12 +6,19 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
-	EnvWSAllowedOrigins        = "WS_ALLOWED_ORIGINS"
-	EnvLoginRateLimitPerMinute = "LOGIN_RATE_LIMIT_PER_MINUTE"
-	EnvWSRateLimitPerMinute    = "WS_HANDSHAKE_RATE_LIMIT_PER_MINUTE"
+	EnvWSAllowedOrigins         = "WS_ALLOWED_ORIGINS"
+	EnvLoginRateLimitPerMinute  = "LOGIN_RATE_LIMIT_PER_MINUTE"
+	EnvLoginUserRateLimit       = "LOGIN_USER_RATE_LIMIT_PER_MINUTE"
+	EnvWSRateLimitPerMinute     = "WS_HANDSHAKE_RATE_LIMIT_PER_MINUTE"
+	EnvAccessTokenTTLMinutes    = "ACCESS_TOKEN_TTL_MINUTES"
+	EnvRefreshTokenTTLHours     = "REFRESH_TOKEN_TTL_HOURS"
+	EnvLoginLockoutThreshold    = "LOGIN_LOCKOUT_THRESHOLD"
+	EnvLoginLockoutWindowMins   = "LOGIN_LOCKOUT_WINDOW_MINUTES"
+	EnvLoginLockoutDurationMins = "LOGIN_LOCKOUT_DURATION_MINUTES"
 )
 
 func DefaultWSAllowedOrigins() []string {
@@ -77,12 +84,30 @@ func loginRateLimitPerMinute() int {
 	return intFromEnv(EnvLoginRateLimitPerMinute, 60)
 }
 
+func loginUserRateLimitPerMinute() int {
+	return intFromEnv(EnvLoginUserRateLimit, 20)
+}
+
 func wsHandshakeRateLimitPerMinute() int {
 	return intFromEnv(EnvWSRateLimitPerMinute, 120)
 }
 
 func LoginRateLimitPerMinute() int       { return loginRateLimitPerMinute() }
+func LoginUserRateLimitPerMinute() int   { return loginUserRateLimitPerMinute() }
 func WSHandshakeRateLimitPerMinute() int { return wsHandshakeRateLimitPerMinute() }
+func AccessTokenTTL() time.Duration {
+	return time.Duration(intFromEnv(EnvAccessTokenTTLMinutes, 15)) * time.Minute
+}
+func RefreshTokenTTL() time.Duration {
+	return time.Duration(intFromEnv(EnvRefreshTokenTTLHours, 24*30)) * time.Hour
+}
+func LoginLockoutThreshold() int { return intFromEnv(EnvLoginLockoutThreshold, 5) }
+func LoginLockoutWindow() time.Duration {
+	return time.Duration(intFromEnv(EnvLoginLockoutWindowMins, 15)) * time.Minute
+}
+func LoginLockoutDuration() time.Duration {
+	return time.Duration(intFromEnv(EnvLoginLockoutDurationMins, 15)) * time.Minute
+}
 
 func intFromEnv(key string, fallback int) int {
 	raw := strings.TrimSpace(os.Getenv(key))

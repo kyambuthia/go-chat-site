@@ -1,6 +1,9 @@
 package identity
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // UserID is the internal stable identifier used by the current centralized backend.
 type UserID int
@@ -31,9 +34,40 @@ type PasswordCredential struct {
 	Password string
 }
 
+// SessionMetadata carries request/device context used for session creation and refresh rotation.
+type SessionMetadata struct {
+	DeviceLabel string
+	UserAgent   string
+	IPAddress   string
+}
+
+// Session is the device/session projection exposed to the authenticated account surface.
+type Session struct {
+	ID                    int64
+	UserID                UserID
+	DeviceLabel           string
+	UserAgent             string
+	LastSeenIP            string
+	CreatedAt             time.Time
+	LastSeenAt            time.Time
+	AccessTokenExpiresAt  time.Time
+	RefreshTokenExpiresAt time.Time
+	RevokedAt             *time.Time
+}
+
+// SessionTokens is the access/refresh token bundle returned by login and refresh flows.
+type SessionTokens struct {
+	AccessToken           string
+	RefreshToken          string
+	AccessTokenExpiresAt  time.Time
+	RefreshTokenExpiresAt time.Time
+	Session               Session
+}
+
 // TokenClaims is the normalized auth token payload used by adapters.
 type TokenClaims struct {
 	SubjectUserID UserID
+	SessionID     int64
 }
 
 // Authenticator validates credentials and returns a principal.
@@ -41,10 +75,14 @@ type Authenticator interface {
 	AuthenticatePassword(ctx context.Context, cred PasswordCredential) (Principal, error)
 }
 
-// TokenService abstracts token creation/validation (today: JWT, future: DID/WebAuthn assertions).
+// TokenService abstracts token creation/validation and session lifecycle.
 type TokenService interface {
-	IssueToken(ctx context.Context, principal Principal) (string, error)
+	IssueSession(ctx context.Context, principal Principal, meta SessionMetadata) (SessionTokens, error)
+	RefreshSession(ctx context.Context, refreshToken string, meta SessionMetadata) (SessionTokens, error)
 	ValidateToken(ctx context.Context, token string) (TokenClaims, error)
+	ListSessions(ctx context.Context, userID UserID) ([]Session, error)
+	RevokeSession(ctx context.Context, actorUserID UserID, sessionID int64) error
+	TouchSession(ctx context.Context, sessionID int64, meta SessionMetadata) error
 }
 
 // KeyMaterialProvider abstracts future DID/WebAuthn/passkey key resolution.

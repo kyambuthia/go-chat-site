@@ -19,29 +19,26 @@ import (
 // NewRouter builds the mux-based HTTP+WS adapter while preserving current route paths.
 func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux := http.NewServeMux()
-	loginLimiterImpl := requestRateLimiter(newFixedWindowRateLimiter(config.LoginRateLimitPerMinute(), time.Minute))
 	wsLimiterImpl := requestRateLimiter(newFixedWindowRateLimiter(config.WSHandshakeRateLimitPerMinute(), time.Minute))
+	var authSecurity *authSecurity
 	if dbProvider, ok := dataStore.(interface{ SQLDB() *sql.DB }); ok && dbProvider.SQLDB() != nil {
-		loginShared, err := newSharedWindowRateLimiter(dbProvider.SQLDB(), config.LoginRateLimitPerMinute(), time.Minute)
-		if err != nil {
-			log.Printf("warn: shared login rate limiter disabled: %v", err)
-		} else {
-			loginLimiterImpl = loginShared
-		}
-
 		wsShared, err := newSharedWindowRateLimiter(dbProvider.SQLDB(), config.WSHandshakeRateLimitPerMinute(), time.Minute)
 		if err != nil {
 			log.Printf("warn: shared websocket rate limiter disabled: %v", err)
 		} else {
 			wsLimiterImpl = wsShared
 		}
+		authSecurity, err = newAuthSecurity(dbProvider.SQLDB())
+		if err != nil {
+			log.Printf("warn: auth security controls disabled: %v", err)
+		}
 	}
-	loginLimiter := rateLimitMiddleware(loginLimiterImpl)
 	wsHandshakeLimiter := rateLimitMiddleware(wsLimiterImpl)
 	wiring := app.NewWiring(dataStore)
 	hub.SetDeliveryService(coremsg.NewDurableRelayServiceWithCorrelation(hub, wiring.MessagingPersistence, wiring.MessagingCorrelation))
+	authMiddleware := auth.Middleware(wiring.Tokens)
 
-	authHandler := &AuthHandler{Identity: wiring.Auth}
+	authHandler := &AuthHandler{Identity: wiring.Auth, Sessions: wiring.Sessions, Security: authSecurity, SessionHub: hub}
 	contactsHandler := &ContactsHandler{Contacts: wiring.Contacts}
 	inviteHandler := &InviteHandler{Contacts: wiring.Contacts}
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
@@ -52,9 +49,22 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.HandleFunc("/readyz", readyzHandler(readinessCheck(dataStore)))
 
 	mux.HandleFunc("/api/register", authHandler.Register)
-	mux.Handle("/api/login", loginLimiter(http.HandlerFunc(authHandler.Login)))
+	mux.HandleFunc("/api/login", authHandler.Login)
+	mux.HandleFunc("/api/auth/refresh", authHandler.Refresh)
 
-	mux.Handle("/api/contacts", auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/logout", authMiddleware(http.HandlerFunc(authHandler.Logout)))
+	mux.Handle("/api/sessions", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			authHandler.GetSessions(w, r)
+		case http.MethodDelete:
+			authHandler.RevokeSession(w, r)
+		default:
+			web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/contacts", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			contactsHandler.GetContacts(w, r)
@@ -67,12 +77,12 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 		}
 	})))
 
-	mux.Handle("/api/invites", auth.Middleware(http.HandlerFunc(inviteHandler.GetInvites)))
-	mux.Handle("/api/invites/send", auth.Middleware(http.HandlerFunc(inviteHandler.SendInvite)))
-	mux.Handle("/api/invites/accept", auth.Middleware(http.HandlerFunc(inviteHandler.AcceptInvite)))
-	mux.Handle("/api/invites/reject", auth.Middleware(http.HandlerFunc(inviteHandler.RejectInvite)))
+	mux.Handle("/api/invites", authMiddleware(http.HandlerFunc(inviteHandler.GetInvites)))
+	mux.Handle("/api/invites/send", authMiddleware(http.HandlerFunc(inviteHandler.SendInvite)))
+	mux.Handle("/api/invites/accept", authMiddleware(http.HandlerFunc(inviteHandler.AcceptInvite)))
+	mux.Handle("/api/invites/reject", authMiddleware(http.HandlerFunc(inviteHandler.RejectInvite)))
 
-	mux.Handle("/api/me", auth.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/api/me", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			meHandler.GetMe(w, r)
@@ -82,19 +92,19 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 			web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
 		}
 	})))
-	mux.Handle("/api/wallet", auth.Middleware(http.HandlerFunc(walletHandler.GetWallet)))
-	mux.Handle("/api/wallet/transfers", auth.Middleware(http.HandlerFunc(walletHandler.GetTransfers)))
-	mux.Handle("/api/wallet/send", auth.Middleware(http.HandlerFunc(walletHandler.SendMoney)))
-	mux.Handle("/api/messages/inbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetInbox)))
-	mux.Handle("/api/messages/outbox", auth.Middleware(http.HandlerFunc(messagesHandler.GetOutbox)))
-	mux.Handle("/api/messages/threads", auth.Middleware(http.HandlerFunc(messagesHandler.GetThreads)))
-	mux.Handle("/api/messaging/threads", auth.Middleware(http.HandlerFunc(messagesHandler.GetThreads)))
-	mux.Handle("/api/messages/sync", auth.Middleware(http.HandlerFunc(messagesHandler.GetSync)))
-	mux.Handle("/api/messaging/sync", auth.Middleware(http.HandlerFunc(messagesHandler.GetSync)))
-	mux.Handle("/api/messages/read", auth.Middleware(http.HandlerFunc(messagesHandler.MarkRead)))
-	mux.Handle("/api/messages/delivered", auth.Middleware(http.HandlerFunc(messagesHandler.MarkDelivered)))
+	mux.Handle("/api/wallet", authMiddleware(http.HandlerFunc(walletHandler.GetWallet)))
+	mux.Handle("/api/wallet/transfers", authMiddleware(http.HandlerFunc(walletHandler.GetTransfers)))
+	mux.Handle("/api/wallet/send", authMiddleware(http.HandlerFunc(walletHandler.SendMoney)))
+	mux.Handle("/api/messages/inbox", authMiddleware(http.HandlerFunc(messagesHandler.GetInbox)))
+	mux.Handle("/api/messages/outbox", authMiddleware(http.HandlerFunc(messagesHandler.GetOutbox)))
+	mux.Handle("/api/messages/threads", authMiddleware(http.HandlerFunc(messagesHandler.GetThreads)))
+	mux.Handle("/api/messaging/threads", authMiddleware(http.HandlerFunc(messagesHandler.GetThreads)))
+	mux.Handle("/api/messages/sync", authMiddleware(http.HandlerFunc(messagesHandler.GetSync)))
+	mux.Handle("/api/messaging/sync", authMiddleware(http.HandlerFunc(messagesHandler.GetSync)))
+	mux.Handle("/api/messages/read", authMiddleware(http.HandlerFunc(messagesHandler.MarkRead)))
+	mux.Handle("/api/messages/delivered", authMiddleware(http.HandlerFunc(messagesHandler.MarkDelivered)))
 
-	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, app.WSAuthenticator(dataStore), app.WSResolveUserID(dataStore))))
+	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, app.WSAuthenticator(wiring.Tokens, dataStore), app.WSResolveUserID(dataStore))))
 
 	return mux
 }

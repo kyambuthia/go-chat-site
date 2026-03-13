@@ -137,6 +137,197 @@ func TestAuthHandlers(t *testing.T) {
 			t.Errorf("handler returned wrong status code: got %v want %v", rr.Code, http.StatusUnauthorized)
 		}
 	})
+
+	t.Run("TestAuthSessions_RefreshReplayRevokesSession", func(t *testing.T) {
+		type sessionPayload struct {
+			ID          int64  `json:"id"`
+			DeviceLabel string `json:"device_label"`
+		}
+		type authResponse struct {
+			Token        string         `json:"token"`
+			AccessToken  string         `json:"access_token"`
+			RefreshToken string         `json:"refresh_token"`
+			Session      sessionPayload `json:"session"`
+		}
+
+		loginReqBody, _ := json.Marshal(map[string]string{
+			"username":     "testuser",
+			"password":     "password123",
+			"device_label": "Browser One",
+		})
+		loginReq := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBuffer(loginReqBody))
+		loginReq.Header.Set("Content-Type", "application/json")
+		loginRR := httptest.NewRecorder()
+		a.ServeHTTP(loginRR, loginReq)
+
+		if loginRR.Code != http.StatusOK {
+			t.Fatalf("login status = %d, want %d; body=%s", loginRR.Code, http.StatusOK, loginRR.Body.String())
+		}
+
+		var loginResp authResponse
+		if err := json.Unmarshal(loginRR.Body.Bytes(), &loginResp); err != nil {
+			t.Fatalf("unmarshal login response: %v", err)
+		}
+		if loginResp.AccessToken == "" || loginResp.RefreshToken == "" || loginResp.Session.ID == 0 {
+			t.Fatalf("unexpected login payload: %+v", loginResp)
+		}
+		if loginResp.Session.DeviceLabel != "Browser One" {
+			t.Fatalf("device label = %q, want Browser One", loginResp.Session.DeviceLabel)
+		}
+
+		refreshReqBody, _ := json.Marshal(map[string]string{
+			"refresh_token": loginResp.RefreshToken,
+			"device_label":  "Browser One",
+		})
+		refreshReq := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", bytes.NewBuffer(refreshReqBody))
+		refreshReq.Header.Set("Content-Type", "application/json")
+		refreshRR := httptest.NewRecorder()
+		a.ServeHTTP(refreshRR, refreshReq)
+
+		if refreshRR.Code != http.StatusOK {
+			t.Fatalf("refresh status = %d, want %d; body=%s", refreshRR.Code, http.StatusOK, refreshRR.Body.String())
+		}
+
+		var refreshResp authResponse
+		if err := json.Unmarshal(refreshRR.Body.Bytes(), &refreshResp); err != nil {
+			t.Fatalf("unmarshal refresh response: %v", err)
+		}
+		if refreshResp.AccessToken == loginResp.AccessToken {
+			t.Fatal("expected refresh to rotate access token")
+		}
+		if refreshResp.RefreshToken == loginResp.RefreshToken {
+			t.Fatal("expected refresh to rotate refresh token")
+		}
+		if refreshResp.Session.ID != loginResp.Session.ID {
+			t.Fatalf("session id = %d, want %d", refreshResp.Session.ID, loginResp.Session.ID)
+		}
+
+		replayReqBody, _ := json.Marshal(map[string]string{
+			"refresh_token": loginResp.RefreshToken,
+		})
+		replayReq := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", bytes.NewBuffer(replayReqBody))
+		replayReq.Header.Set("Content-Type", "application/json")
+		replayRR := httptest.NewRecorder()
+		a.ServeHTTP(replayRR, replayReq)
+
+		if replayRR.Code != http.StatusUnauthorized {
+			t.Fatalf("replay refresh status = %d, want %d; body=%s", replayRR.Code, http.StatusUnauthorized, replayRR.Body.String())
+		}
+
+		meReq := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+		meReq.Header.Set("Authorization", "Bearer "+refreshResp.AccessToken)
+		meRR := httptest.NewRecorder()
+		a.ServeHTTP(meRR, meReq)
+
+		if meRR.Code != http.StatusUnauthorized {
+			t.Fatalf("me after replay revoke status = %d, want %d; body=%s", meRR.Code, http.StatusUnauthorized, meRR.Body.String())
+		}
+	})
+
+	t.Run("TestAuthSessions_ListRevokeAndLogout", func(t *testing.T) {
+		type sessionPayload struct {
+			ID      int64  `json:"id"`
+			Current bool   `json:"current"`
+			Device  string `json:"device_label"`
+		}
+		type authResponse struct {
+			AccessToken  string `json:"access_token"`
+			RefreshToken string `json:"refresh_token"`
+			Session      struct {
+				ID int64 `json:"id"`
+			} `json:"session"`
+		}
+
+		login := func(device string) authResponse {
+			reqBody, _ := json.Marshal(map[string]string{
+				"username":     "testuser",
+				"password":     "password123",
+				"device_label": device,
+			})
+			req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBuffer(reqBody))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+			a.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("login(%s) status = %d, want %d; body=%s", device, rr.Code, http.StatusOK, rr.Body.String())
+			}
+
+			var resp authResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal login(%s): %v", device, err)
+			}
+			return resp
+		}
+
+		first := login("Browser Alpha")
+		second := login("Phone Beta")
+
+		listReq := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+		listReq.Header.Set("Authorization", "Bearer "+first.AccessToken)
+		listRR := httptest.NewRecorder()
+		a.ServeHTTP(listRR, listReq)
+
+		if listRR.Code != http.StatusOK {
+			t.Fatalf("list sessions status = %d, want %d; body=%s", listRR.Code, http.StatusOK, listRR.Body.String())
+		}
+
+		var sessions []sessionPayload
+		if err := json.Unmarshal(listRR.Body.Bytes(), &sessions); err != nil {
+			t.Fatalf("unmarshal sessions: %v", err)
+		}
+		if len(sessions) < 2 {
+			t.Fatalf("sessions len = %d, want at least 2", len(sessions))
+		}
+
+		var sawCurrent bool
+		for _, session := range sessions {
+			if session.ID == first.Session.ID && session.Current {
+				sawCurrent = true
+				break
+			}
+		}
+		if !sawCurrent {
+			t.Fatal("expected current session flag for first login")
+		}
+
+		revokeReqBody, _ := json.Marshal(map[string]int64{"session_id": second.Session.ID})
+		revokeReq := httptest.NewRequest(http.MethodDelete, "/api/sessions", bytes.NewBuffer(revokeReqBody))
+		revokeReq.Header.Set("Authorization", "Bearer "+first.AccessToken)
+		revokeReq.Header.Set("Content-Type", "application/json")
+		revokeRR := httptest.NewRecorder()
+		a.ServeHTTP(revokeRR, revokeReq)
+
+		if revokeRR.Code != http.StatusNoContent {
+			t.Fatalf("revoke session status = %d, want %d; body=%s", revokeRR.Code, http.StatusNoContent, revokeRR.Body.String())
+		}
+
+		secondMeReq := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+		secondMeReq.Header.Set("Authorization", "Bearer "+second.AccessToken)
+		secondMeRR := httptest.NewRecorder()
+		a.ServeHTTP(secondMeRR, secondMeReq)
+
+		if secondMeRR.Code != http.StatusUnauthorized {
+			t.Fatalf("revoked session me status = %d, want %d; body=%s", secondMeRR.Code, http.StatusUnauthorized, secondMeRR.Body.String())
+		}
+
+		logoutReq := httptest.NewRequest(http.MethodPost, "/api/logout", nil)
+		logoutReq.Header.Set("Authorization", "Bearer "+first.AccessToken)
+		logoutRR := httptest.NewRecorder()
+		a.ServeHTTP(logoutRR, logoutReq)
+
+		if logoutRR.Code != http.StatusNoContent {
+			t.Fatalf("logout status = %d, want %d; body=%s", logoutRR.Code, http.StatusNoContent, logoutRR.Body.String())
+		}
+
+		firstMeReq := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+		firstMeReq.Header.Set("Authorization", "Bearer "+first.AccessToken)
+		firstMeRR := httptest.NewRecorder()
+		a.ServeHTTP(firstMeRR, firstMeReq)
+
+		if firstMeRR.Code != http.StatusUnauthorized {
+			t.Fatalf("logged out me status = %d, want %d; body=%s", firstMeRR.Code, http.StatusUnauthorized, firstMeRR.Body.String())
+		}
+	})
 }
 
 func TestContactsAndInvitesRoutes_Compatibility(t *testing.T) {

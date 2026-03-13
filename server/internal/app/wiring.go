@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/identity/jwttokens"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/identity/passwordbcrypt"
@@ -10,7 +12,7 @@ import (
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteidentityauth"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqliteledger"
 	"github.com/kyambuthia/go-chat-site/server/internal/adapters/store/sqlitemessaging"
-	"github.com/kyambuthia/go-chat-site/server/internal/auth"
+	"github.com/kyambuthia/go-chat-site/server/internal/config"
 	corecontacts "github.com/kyambuthia/go-chat-site/server/internal/core/contacts"
 	coreid "github.com/kyambuthia/go-chat-site/server/internal/core/identity"
 	coreledger "github.com/kyambuthia/go-chat-site/server/internal/core/ledger"
@@ -22,6 +24,8 @@ import (
 type Wiring struct {
 	Contacts             corecontacts.Service
 	Auth                 coreid.AuthService
+	Sessions             coreid.SessionService
+	Tokens               coreid.TokenService
 	Identity             coreid.ProfileService
 	Ledger               coreledger.Service
 	MessagingPersistence coremsg.PersistenceService
@@ -35,12 +39,19 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 	identityAdapter := &sqliteidentity.Adapter{Store: dataStore}
 	ledgerAdapter := &sqliteledger.Adapter{WalletStore: dataStore}
 	var messagingPersistence coremsg.PersistenceService
+	tokenAdapter := &jwttokens.Adapter{
+		AccessTTL:  config.AccessTokenTTL(),
+		RefreshTTL: config.RefreshTokenTTL(),
+	}
 	if dbProvider, ok := dataStore.(interface{ SQLDB() *sql.DB }); ok && dbProvider.SQLDB() != nil {
+		tokenAdapter.DB = dbProvider.SQLDB()
 		messagingAdapter := &sqlitemessaging.Adapter{DB: dbProvider.SQLDB()}
 		messagingPersistence = coremsg.NewPersistenceService(messagingAdapter)
 		return &Wiring{
 			Contacts:             corecontacts.NewService(contactsAdapter, contactsAdapter),
-			Auth:                 coreid.NewAuthService(authAdapter, passwordbcrypt.Verifier{}, &jwttokens.Adapter{}),
+			Auth:                 coreid.NewAuthService(authAdapter, passwordbcrypt.Verifier{}, tokenAdapter),
+			Sessions:             coreid.NewSessionService(tokenAdapter),
+			Tokens:               tokenAdapter,
 			Identity:             coreid.NewProfileService(identityAdapter),
 			Ledger:               coreledger.NewService(ledgerAdapter, ledgerAdapter),
 			MessagingPersistence: messagingPersistence,
@@ -51,24 +62,29 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 
 	return &Wiring{
 		Contacts:             corecontacts.NewService(contactsAdapter, contactsAdapter),
-		Auth:                 coreid.NewAuthService(authAdapter, passwordbcrypt.Verifier{}, &jwttokens.Adapter{}),
+		Auth:                 coreid.NewAuthService(authAdapter, passwordbcrypt.Verifier{}, tokenAdapter),
+		Sessions:             coreid.NewSessionService(tokenAdapter),
+		Tokens:               tokenAdapter,
 		Identity:             coreid.NewProfileService(identityAdapter),
 		Ledger:               coreledger.NewService(ledgerAdapter, ledgerAdapter),
 		MessagingPersistence: messagingPersistence,
 	}
 }
 
-func WSAuthenticator(dataStore store.APIStore) func(token string) (int, string, error) {
-	return func(token string) (int, string, error) {
-		claims, err := auth.ValidateToken(token)
-		if err != nil {
-			return 0, "", err
+func WSAuthenticator(tokens coreid.TokenService, dataStore store.APIStore) func(token string) (int, string, int64, error) {
+	return func(token string) (int, string, int64, error) {
+		if tokens == nil {
+			return 0, "", 0, errors.New("auth unavailable")
 		}
-		user, err := dataStore.GetUserByID(claims.UserID)
+		claims, err := tokens.ValidateToken(context.Background(), token)
 		if err != nil {
-			return 0, "", err
+			return 0, "", 0, err
 		}
-		return user.ID, user.Username, nil
+		user, err := dataStore.GetUserByID(int(claims.SubjectUserID))
+		if err != nil {
+			return 0, "", 0, err
+		}
+		return user.ID, user.Username, claims.SessionID, nil
 	}
 }
 

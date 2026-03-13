@@ -32,7 +32,7 @@ func TestNewWiring_ComposesWorkingCoreServices(t *testing.T) {
 
 	s := newTestStore(t)
 	w := NewWiring(s)
-	if w == nil || w.Auth == nil || w.Identity == nil || w.Contacts == nil || w.Ledger == nil || w.MessagingThreads == nil {
+	if w == nil || w.Auth == nil || w.Sessions == nil || w.Tokens == nil || w.Identity == nil || w.Contacts == nil || w.Ledger == nil || w.MessagingThreads == nil {
 		t.Fatalf("unexpected nil wiring/services: %+v", w)
 	}
 
@@ -47,15 +47,19 @@ func TestNewWiring_ComposesWorkingCoreServices(t *testing.T) {
 		t.Fatalf("principal username = %q, want alice", principal.Username)
 	}
 
-	token, err := w.Auth.LoginPassword(context.Background(), coreid.PasswordCredential{
+	tokens, err := w.Auth.LoginPassword(context.Background(), coreid.PasswordCredential{
 		Username: "alice",
 		Password: "password123",
+	}, coreid.SessionMetadata{
+		DeviceLabel: "Test browser",
+		UserAgent:   "test-agent",
+		IPAddress:   "127.0.0.1",
 	})
 	if err != nil {
 		t.Fatalf("LoginPassword error: %v", err)
 	}
-	if token == "" {
-		t.Fatal("expected token")
+	if tokens.AccessToken == "" || tokens.RefreshToken == "" {
+		t.Fatalf("expected access and refresh tokens, got %+v", tokens)
 	}
 
 	profile, err := w.Identity.GetProfile(context.Background(), principal.ID)
@@ -108,20 +112,31 @@ func TestWSHelpers_ResolveUserAndAuthenticateToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, err := auth.GenerateToken(userID)
+	w := NewWiring(s)
+	tokens, err := w.Auth.LoginPassword(context.Background(), coreid.PasswordCredential{
+		Username: "alice",
+		Password: "password123",
+	}, coreid.SessionMetadata{
+		DeviceLabel: "CLI",
+		UserAgent:   "test-agent",
+		IPAddress:   "127.0.0.1",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	authn := WSAuthenticator(s)
+	authn := WSAuthenticator(w.Tokens, s)
 	resolve := WSResolveUserID(s)
 
-	gotID, gotUsername, err := authn(token)
+	gotID, gotUsername, gotSessionID, err := authn(tokens.AccessToken)
 	if err != nil {
 		t.Fatalf("WSAuthenticator error: %v", err)
 	}
 	if gotID != userID || gotUsername != "alice" {
 		t.Fatalf("unexpected authn result id=%d username=%q", gotID, gotUsername)
+	}
+	if gotSessionID == 0 {
+		t.Fatal("expected non-zero session id")
 	}
 
 	resolvedID, err := resolve("alice")

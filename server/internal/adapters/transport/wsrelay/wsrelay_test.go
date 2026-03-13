@@ -262,14 +262,14 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	go hub.Run()
 	defer hub.Shutdown()
 
-	authenticator := func(token string) (int, string, error) {
+	authenticator := func(token string) (int, string, int64, error) {
 		switch token {
 		case "alice-token":
-			return 1, "alice", nil
+			return 1, "alice", 101, nil
 		case "bob-token":
-			return 2, "bob", nil
+			return 2, "bob", 202, nil
 		default:
-			return 0, "", errors.New("invalid token")
+			return 0, "", 0, errors.New("invalid token")
 		}
 	}
 	resolve := ExampleResolveUserIDForTests(map[string]int{"alice": 1, "bob": 2})
@@ -361,14 +361,14 @@ func TestWebSocketHandler_PresenceOfflineBroadcast(t *testing.T) {
 	go hub.Run()
 	defer hub.Shutdown()
 
-	authenticator := func(token string) (int, string, error) {
+	authenticator := func(token string) (int, string, int64, error) {
 		switch token {
 		case "alice-token":
-			return 1, "alice", nil
+			return 1, "alice", 101, nil
 		case "bob-token":
-			return 2, "bob", nil
+			return 2, "bob", 202, nil
 		default:
-			return 0, "", errors.New("invalid token")
+			return 0, "", 0, errors.New("invalid token")
 		}
 	}
 	resolve := ExampleResolveUserIDForTests(map[string]int{"alice": 1, "bob": 2})
@@ -410,16 +410,16 @@ func TestWebSocketHandler_PresenceBootstrapListsCurrentlyOnlineUsers(t *testing.
 	go hub.Run()
 	defer hub.Shutdown()
 
-	authenticator := func(token string) (int, string, error) {
+	authenticator := func(token string) (int, string, int64, error) {
 		switch token {
 		case "alice-token":
-			return 1, "alice", nil
+			return 1, "alice", 101, nil
 		case "bob-token":
-			return 2, "bob", nil
+			return 2, "bob", 202, nil
 		case "carol-token":
-			return 3, "carol", nil
+			return 3, "carol", 303, nil
 		default:
-			return 0, "", errors.New("invalid token")
+			return 0, "", 0, errors.New("invalid token")
 		}
 	}
 	resolve := ExampleResolveUserIDForTests(map[string]int{"alice": 1, "bob": 2, "carol": 3})
@@ -456,14 +456,14 @@ func TestWebSocketHandler_MultipleSessionsOnlyBroadcastOfflineAfterLastDisconnec
 	go hub.Run()
 	defer hub.Shutdown()
 
-	authenticator := func(token string) (int, string, error) {
+	authenticator := func(token string) (int, string, int64, error) {
 		switch token {
 		case "alice-token":
-			return 1, "alice", nil
+			return 1, "alice", 101, nil
 		case "bob-token":
-			return 2, "bob", nil
+			return 2, "bob", 202, nil
 		default:
-			return 0, "", errors.New("invalid token")
+			return 0, "", 0, errors.New("invalid token")
 		}
 	}
 	resolve := ExampleResolveUserIDForTests(map[string]int{"alice": 1, "bob": 2})
@@ -522,14 +522,14 @@ func TestWebSocketHandler_DirectMessageFansOutToAllRecipientSessions(t *testing.
 	go hub.Run()
 	defer hub.Shutdown()
 
-	authenticator := func(token string) (int, string, error) {
+	authenticator := func(token string) (int, string, int64, error) {
 		switch token {
 		case "alice-token":
-			return 1, "alice", nil
+			return 1, "alice", 101, nil
 		case "bob-token":
-			return 2, "bob", nil
+			return 2, "bob", 202, nil
 		default:
-			return 0, "", errors.New("invalid token")
+			return 0, "", 0, errors.New("invalid token")
 		}
 	}
 	resolve := ExampleResolveUserIDForTests(map[string]int{"alice": 1, "bob": 2})

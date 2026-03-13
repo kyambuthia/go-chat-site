@@ -24,7 +24,7 @@ type PasswordVerifier interface {
 
 type AuthService interface {
 	RegisterPassword(ctx context.Context, cred PasswordCredential) (Principal, error)
-	LoginPassword(ctx context.Context, cred PasswordCredential) (string, error)
+	LoginPassword(ctx context.Context, cred PasswordCredential, meta SessionMetadata) (SessionTokens, error)
 }
 
 type authService struct {
@@ -42,13 +42,13 @@ func (s *authService) RegisterPassword(ctx context.Context, cred PasswordCredent
 	return s.repo.CreateUser(ctx, cred)
 }
 
-func (s *authService) LoginPassword(ctx context.Context, cred PasswordCredential) (string, error) {
+func (s *authService) LoginPassword(ctx context.Context, cred PasswordCredential, meta SessionMetadata) (SessionTokens, error) {
 	record, err := s.repo.GetPasswordLoginRecord(ctx, strings.TrimSpace(cred.Username))
 	if err != nil {
-		return "", ErrInvalidCredentials
+		return SessionTokens{}, ErrInvalidCredentials
 	}
 	if s.verifier == nil || !s.verifier.VerifyPassword(cred.Password, record.PasswordHash) {
-		return "", ErrInvalidCredentials
+		return SessionTokens{}, ErrInvalidCredentials
 	}
-	return s.tokens.IssueToken(ctx, record.Principal)
+	return s.tokens.IssueSession(ctx, record.Principal, meta)
 }
