@@ -10,6 +10,10 @@ This document defines:
 Authentication and profile:
 - `POST /api/register`
 - `POST /api/login`
+- `POST /api/auth/refresh`
+- `POST /api/logout`
+- `GET /api/sessions`
+- `DELETE /api/sessions`
 - `GET /api/me`
 - `PATCH /api/me`
 
@@ -61,9 +65,36 @@ Current sync payload notes:
 - clients should treat `cursor.next_after_id` as the next durable checkpoint after each page
 - `GET /api/messages/outbox` and `GET /api/messaging/sync` may include `client_message_id` on sent messages so the client can reconcile optimistic local bubbles with durable stored messages after reconnect
 
+## Current Auth Session Contract
+Login and refresh responses return:
+- `token`: compatibility alias for `access_token`
+- `access_token`
+- `refresh_token`
+- `access_token_expires_at`
+- `refresh_token_expires_at`
+- `session`
+
+Current `session` payload fields:
+- `id`
+- `device_label`
+- `user_agent`
+- `last_seen_ip`
+- `created_at`
+- `last_seen_at`
+- `access_token_expires_at`
+- `refresh_token_expires_at`
+
+Session management behavior:
+- `POST /api/auth/refresh` accepts `{ "refresh_token": "...", "device_label": "..." }`
+- `POST /api/logout` revokes the current authenticated session
+- `GET /api/sessions` returns the caller's active sessions and marks the current one with `current: true`
+- `DELETE /api/sessions` accepts `{ "session_id": <id> }` and revokes that session if it belongs to the caller
+
 ## Auth and Security Notes
 - JWT secret is configured by `JWT_SECRET`
-- Login and WS handshake are rate-limited (lightweight per-IP fixed window)
+- Access tokens are validated against session state when a `session_id` claim is present
+- Refresh tokens are opaque, rotated on refresh, and replay-protected
+- Login uses per-IP and per-user quotas plus a lockout/backoff table
 - WS origin checks use `WS_ALLOWED_ORIGINS` with localhost-safe defaults
 
 ## Future Versioning Strategy
