@@ -5,14 +5,15 @@ import { Label } from '@radix-ui/react-label';
 export default function Login({ onLogin, onShowRegister }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [deviceLabel, setDeviceLabel] = useState("");
   const [message, setMessage] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const data = await loginUser(username, password);
-      if (data && data.token) {
-        onLogin(data.token);
+      const data = await loginUser(username, password, deviceLabel.trim());
+      if (data && (data.access_token || data.token)) {
+        onLogin(data);
       } else {
         setMessage("Login failed: No token received.");
       }
@@ -45,6 +46,16 @@ export default function Login({ onLogin, onShowRegister }) {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
             required
+          />
+        </div>
+        <div className="form-group">
+          <Label htmlFor="device_label">Device Label</Label>
+          <input
+            id="device_label"
+            type="text"
+            value={deviceLabel}
+            onChange={(e) => setDeviceLabel(e.target.value)}
+            placeholder="Optional name for this device"
           />
         </div>
         <button type="submit">Login</button>

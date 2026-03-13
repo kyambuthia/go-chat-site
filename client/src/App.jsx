@@ -4,7 +4,15 @@ import Login from "./components/Login";
 import Register from "./components/Register";
 import ContactsPage from "./components/ContactsPage";
 import AccountPage from "./components/AccountPage";
-import { setToken, getInvites, setAuthErrorHandler } from "./api";
+import {
+  clearAuthState,
+  ensureAccessToken,
+  getAccessToken,
+  getInvites,
+  hasStoredSession,
+  logoutSession,
+  setAuthErrorHandler,
+} from "./api";
 import { ChatBubbleIcon, PersonIcon, GearIcon } from "@radix-ui/react-icons";
 
 import { connectWebSocket } from "./ws";
@@ -14,6 +22,7 @@ const normalizeOnlineUsers = (users = []) => [...new Set(users.filter(Boolean))]
 function App() {
   const [ws, setWs] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [showRegister, setShowRegister] = useState(false);
   const [selectedContact, setSelectedContact] = useState(null);
   const [activeTab, setActiveTab] = useState("chat");
@@ -28,12 +37,63 @@ function App() {
   const activeSocketRef = useRef(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setToken(token);
-      setIsLoggedIn(true);
-    }
+    let cancelled = false;
+
+    const bootstrapAuth = async () => {
+      if (!hasStoredSession()) {
+        if (!cancelled) {
+          setAuthReady(true);
+        }
+        return;
+      }
+
+      try {
+        await ensureAccessToken();
+        if (!cancelled) {
+          setIsLoggedIn(true);
+        }
+      } catch (error) {
+        console.error("Failed to restore session:", error);
+        if (error?.isAuthFailure) {
+          clearAuthState();
+        } else if (!cancelled) {
+          setIsLoggedIn(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setAuthReady(true);
+        }
+      }
+    };
+
+    bootstrapAuth();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const clearLoggedInState = () => {
+    clearAuthState();
+    setIsLoggedIn(false);
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptRef.current = 0;
+    if (activeSocketRef.current) {
+      activeSocketRef.current.close();
+      activeSocketRef.current = null;
+    }
+    setWs(null);
+    setOnlineUsers([]);
+    setLastWsMessage(null);
+    setSelectedContact(null);
+    setInvites([]);
+    setWsStatus("offline");
+    setSyncToken(0);
+    setActiveTab("chat");
+  };
 
   const fetchInvites = async () => {
     try {
@@ -72,71 +132,97 @@ function App() {
     };
 
     const connect = () => {
-      if (cancelled) {
-        return;
-      }
-
-      setWsStatus("connecting");
-      setOnlineUsers([]);
-      const token = localStorage.getItem("token");
-      const socket = connectWebSocket(token);
-      activeSocketRef.current = socket;
-      setWs(socket);
-
-      socket.onopen = () => {
-        if (activeSocketRef.current !== socket) {
+      void (async () => {
+        if (cancelled) {
           return;
         }
-        reconnectAttemptRef.current = 0;
-        setWsStatus("online");
-        setSyncToken((current) => current + 1);
-      };
 
-      socket.onclose = () => {
-        if (cancelled || activeSocketRef.current !== socket) {
-          return;
-        }
-        activeSocketRef.current = null;
-        setWs(null);
-        setWsStatus("offline");
+        setWsStatus("connecting");
         setOnlineUsers([]);
-        scheduleReconnect();
-      };
 
-      socket.onerror = () => {
-        if (activeSocketRef.current !== socket) {
-          return;
-        }
-        setWsStatus("offline");
-        setOnlineUsers([]);
-      };
-
-      socket.onmessage = (event) => {
-        if (activeSocketRef.current !== socket) {
-          return;
-        }
-
-        let message;
+        let nextToken = getAccessToken();
         try {
-          message = JSON.parse(event.data);
-        } catch (err) {
-          console.error("Received invalid WebSocket payload:", err);
+          nextToken = await ensureAccessToken();
+        } catch (error) {
+          if (cancelled) {
+            return;
+          }
+
+          if (error?.isAuthFailure) {
+            clearLoggedInState();
+            return;
+          }
+
+          console.error("Failed to prepare websocket auth:", error);
+          setWsStatus("offline");
+          scheduleReconnect();
           return;
         }
-        if (message.type === "presence_state") {
-          setOnlineUsers(normalizeOnlineUsers(message.users || []));
+
+        if (cancelled || !nextToken) {
+          clearLoggedInState();
           return;
         }
-        if (message.type === "user_online") {
-          setOnlineUsers((prevOnlineUsers) => normalizeOnlineUsers([...prevOnlineUsers, message.from]));
-          return;
-        }
-        if (message.type === "user_offline") {
-          setOnlineUsers((prevOnlineUsers) => prevOnlineUsers.filter((user) => user !== message.from));
-          return;
-        }
-        setLastWsMessage(message);
-      };
+
+        const socket = connectWebSocket(nextToken);
+        activeSocketRef.current = socket;
+        setWs(socket);
+
+        socket.onopen = () => {
+          if (activeSocketRef.current !== socket) {
+            return;
+          }
+          reconnectAttemptRef.current = 0;
+          setWsStatus("online");
+          setSyncToken((current) => current + 1);
+        };
+
+        socket.onclose = () => {
+          if (cancelled || activeSocketRef.current !== socket) {
+            return;
+          }
+          activeSocketRef.current = null;
+          setWs(null);
+          setWsStatus("offline");
+          setOnlineUsers([]);
+          scheduleReconnect();
+        };
+
+        socket.onerror = () => {
+          if (activeSocketRef.current !== socket) {
+            return;
+          }
+          setWsStatus("offline");
+          setOnlineUsers([]);
+        };
+
+        socket.onmessage = (event) => {
+          if (activeSocketRef.current !== socket) {
+            return;
+          }
+
+          let message;
+          try {
+            message = JSON.parse(event.data);
+          } catch (err) {
+            console.error("Received invalid WebSocket payload:", err);
+            return;
+          }
+          if (message.type === "presence_state") {
+            setOnlineUsers(normalizeOnlineUsers(message.users || []));
+            return;
+          }
+          if (message.type === "user_online") {
+            setOnlineUsers((prevOnlineUsers) => normalizeOnlineUsers([...prevOnlineUsers, message.from]));
+            return;
+          }
+          if (message.type === "user_offline") {
+            setOnlineUsers((prevOnlineUsers) => prevOnlineUsers.filter((user) => user !== message.from));
+            return;
+          }
+          setLastWsMessage(message);
+        };
+      })();
     };
 
     connect();
@@ -171,39 +257,24 @@ function App() {
     };
   }, [isLoggedIn]);
 
-  const handleLogin = (token) => {
-    localStorage.setItem("token", token);
-    setToken(token);
+  const handleLogin = () => {
     setIsLoggedIn(true);
     setActiveTab("chat");
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
-    setIsLoggedIn(false);
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
+  const handleLogout = async () => {
+    try {
+      await logoutSession();
+    } catch (error) {
+      console.error("Failed to revoke current session during logout:", error);
     }
-    reconnectAttemptRef.current = 0;
-    if (activeSocketRef.current) {
-      activeSocketRef.current.close();
-      activeSocketRef.current = null;
-    }
-    setWs(null);
-    setOnlineUsers([]);
-    setLastWsMessage(null);
-    setSelectedContact(null);
-    setInvites([]);
-    setWsStatus("offline");
-    setSyncToken(0);
+    clearLoggedInState();
   };
 
   useEffect(() => {
     setAuthErrorHandler((message) => {
-      if (message === "invalid token") {
-        handleLogout();
+      if (message) {
+        clearLoggedInState();
       }
     });
 
@@ -213,6 +284,10 @@ function App() {
   }, []);
 
   const renderContent = () => {
+    if (!authReady) {
+      return <div className="status-block">Restoring session...</div>;
+    }
+
     if (!isLoggedIn) {
       return showRegister ? (
         <Register onRegisterSuccess={() => setShowRegister(false)} />

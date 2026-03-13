@@ -3,14 +3,22 @@ import test from "node:test";
 
 import {
   addContact,
+  clearAuthState,
+  ensureAccessToken,
+  getAccessToken,
   getContacts,
   getInbox,
   getMessageThreads,
   getOutbox,
+  getSessions,
   getWalletTransfers,
+  hasStoredSession,
+  loginUser,
+  logoutSession,
   markMessageDelivered,
   markMessageRead,
   removeContact,
+  revokeSession,
   sendMoney,
   setAuthErrorHandler,
   setToken,
@@ -24,7 +32,7 @@ function jsonResponse(status, payload, headers = {}) {
     status,
     headers: {
       get(name) {
-        const key = Object.keys(headers).find((h) => h.toLowerCase() === String(name).toLowerCase());
+        const key = Object.keys(headers).find((headerName) => headerName.toLowerCase() === String(name).toLowerCase());
         return key ? headers[key] : null;
       },
     },
@@ -33,6 +41,202 @@ function jsonResponse(status, payload, headers = {}) {
     },
   };
 }
+
+function createStorage() {
+  const values = new Map();
+  return {
+    getItem(key) {
+      return values.has(key) ? values.get(key) : null;
+    },
+    setItem(key, value) {
+      values.set(key, String(value));
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+    clear() {
+      values.clear();
+    },
+  };
+}
+
+test.beforeEach(() => {
+  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+  process.env.VITE_WS_URL = "";
+  global.localStorage = createStorage();
+  clearAuthState();
+  setAuthErrorHandler(null);
+});
+
+test.afterEach(() => {
+  clearAuthState();
+  setAuthErrorHandler(null);
+  delete global.fetch;
+  delete global.localStorage;
+  delete process.env.VITE_API_BASE_URL;
+  delete process.env.VITE_WS_URL;
+});
+
+test("loginUser stores access and refresh tokens", async () => {
+  global.fetch = async (_url, options) => {
+    assert.equal(options.method, "POST");
+    assert.deepEqual(JSON.parse(options.body), {
+      username: "alice",
+      password: "password123",
+      device_label: "MacBook Air",
+    });
+    return jsonResponse(200, {
+      token: "access-1",
+      access_token: "access-1",
+      refresh_token: "refresh-1",
+      access_token_expires_at: "2099-01-01T00:00:00Z",
+      refresh_token_expires_at: "2099-02-01T00:00:00Z",
+      session: { id: 17, device_label: "MacBook Air" },
+    });
+  };
+
+  const response = await loginUser("alice", "password123", "MacBook Air");
+
+  assert.equal(response.access_token, "access-1");
+  assert.equal(getAccessToken(), "access-1");
+  assert.equal(hasStoredSession(), true);
+  assert.equal(global.localStorage.getItem("token"), "access-1");
+  const stored = JSON.parse(global.localStorage.getItem("auth_session"));
+  assert.equal(stored.refreshToken, "refresh-1");
+  assert.equal(stored.session.id, 17);
+});
+
+test("ensureAccessToken refreshes an expired access token", async () => {
+  let refreshCalls = 0;
+  global.fetch = async (url, options) => {
+    if (url === "http://localhost:8080/api/login") {
+      return jsonResponse(200, {
+        token: "access-old",
+        access_token: "access-old",
+        refresh_token: "refresh-1",
+        access_token_expires_at: "2000-01-01T00:00:00Z",
+        refresh_token_expires_at: "2099-02-01T00:00:00Z",
+        session: { id: 5, device_label: "This browser" },
+      });
+    }
+    if (url === "http://localhost:8080/api/auth/refresh") {
+      refreshCalls += 1;
+      assert.equal(options.method, "POST");
+      assert.deepEqual(JSON.parse(options.body), {
+        refresh_token: "refresh-1",
+        device_label: "This browser",
+      });
+      return jsonResponse(200, {
+        token: "access-new",
+        access_token: "access-new",
+        refresh_token: "refresh-2",
+        access_token_expires_at: "2099-01-01T00:00:00Z",
+        refresh_token_expires_at: "2099-03-01T00:00:00Z",
+        session: { id: 5, device_label: "This browser" },
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+
+  await loginUser("alice", "password123");
+  const token = await ensureAccessToken("This browser");
+
+  assert.equal(token, "access-new");
+  assert.equal(getAccessToken(), "access-new");
+  assert.equal(refreshCalls, 1);
+});
+
+test("invalid token response refreshes once and retries the request", async () => {
+  const calls = [];
+  global.fetch = async (url, options = {}) => {
+    calls.push({ url, options });
+    if (url === "http://localhost:8080/api/login") {
+      return jsonResponse(200, {
+        token: "access-1",
+        access_token: "access-1",
+        refresh_token: "refresh-1",
+        access_token_expires_at: "2099-01-01T00:00:00Z",
+        refresh_token_expires_at: "2099-02-01T00:00:00Z",
+        session: { id: 9, device_label: "Desk" },
+      });
+    }
+    if (url === "http://localhost:8080/api/contacts" && calls.filter((call) => call.url.endsWith("/api/contacts")).length === 1) {
+      assert.equal(options.headers.Authorization, "Bearer access-1");
+      return jsonResponse(401, { error: "invalid token" });
+    }
+    if (url === "http://localhost:8080/api/auth/refresh") {
+      assert.equal(options.headers.Authorization, undefined);
+      return jsonResponse(200, {
+        token: "access-2",
+        access_token: "access-2",
+        refresh_token: "refresh-2",
+        access_token_expires_at: "2099-01-02T00:00:00Z",
+        refresh_token_expires_at: "2099-02-02T00:00:00Z",
+        session: { id: 9, device_label: "Desk" },
+      });
+    }
+    if (url === "http://localhost:8080/api/contacts") {
+      assert.equal(options.headers.Authorization, "Bearer access-2");
+      return jsonResponse(200, []);
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+
+  await loginUser("alice", "password123");
+  await getContacts();
+
+  assert.equal(getAccessToken(), "access-2");
+  assert.equal(calls.filter((call) => call.url.endsWith("/api/auth/refresh")).length, 1);
+});
+
+test("logoutSession posts to logout endpoint", async () => {
+  setToken("token-logout");
+
+  let capturedURL = "";
+  let capturedOptions = null;
+  global.fetch = async (url, options) => {
+    capturedURL = url;
+    capturedOptions = options;
+    return jsonResponse(204, null, { "content-length": "0" });
+  };
+
+  await logoutSession();
+
+  assert.equal(capturedURL, "http://localhost:8080/api/logout");
+  assert.equal(capturedOptions.method, "POST");
+  assert.equal(capturedOptions.headers.Authorization, "Bearer token-logout");
+});
+
+test("getSessions uses the protected sessions endpoint", async () => {
+  setToken("token-sessions");
+
+  let capturedURL = "";
+  global.fetch = async (url, options) => {
+    capturedURL = url;
+    assert.equal(options.headers.Authorization, "Bearer token-sessions");
+    return jsonResponse(200, [{ id: 1, current: true }]);
+  };
+
+  const sessions = await getSessions();
+
+  assert.equal(capturedURL, "http://localhost:8080/api/sessions");
+  assert.equal(sessions.length, 1);
+});
+
+test("revokeSession deletes by session id", async () => {
+  setToken("token-revoke");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(204, null, { "content-length": "0" });
+  };
+
+  await revokeSession(42);
+
+  assert.equal(capturedOptions.method, "DELETE");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { session_id: 42 });
+});
 
 test("getContacts sends Authorization header and uses VITE_API_BASE_URL", async () => {
   process.env.VITE_API_BASE_URL = "https://api.example.com";
@@ -53,7 +257,6 @@ test("getContacts sends Authorization header and uses VITE_API_BASE_URL", async 
 });
 
 test("sendMoney sends amount as integer cents", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-xyz");
 
   let requestBody = "";
@@ -70,7 +273,6 @@ test("sendMoney sends amount as integer cents", async () => {
 });
 
 test("addContact posts username to contacts endpoint", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-add");
 
   let capturedURL = "";
@@ -89,7 +291,6 @@ test("addContact posts username to contacts endpoint", async () => {
 });
 
 test("removeContact deletes by contact id", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-remove");
 
   let capturedOptions = null;
@@ -105,7 +306,6 @@ test("removeContact deletes by contact id", async () => {
 });
 
 test("getInbox sends query params for thread and unread filters", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-inbox");
 
   let capturedURL = "";
@@ -120,7 +320,6 @@ test("getInbox sends query params for thread and unread filters", async () => {
 });
 
 test("getOutbox sends pagination query params", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-outbox");
 
   let capturedURL = "";
@@ -135,7 +334,6 @@ test("getOutbox sends pagination query params", async () => {
 });
 
 test("getMessageThreads sends limit query params to messaging threads endpoint", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-threads");
 
   let capturedURL = "";
@@ -150,7 +348,6 @@ test("getMessageThreads sends limit query params to messaging threads endpoint",
 });
 
 test("syncMessages sends cursor query params to messaging sync endpoint", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-sync");
 
   let capturedURL = "";
@@ -165,7 +362,6 @@ test("syncMessages sends cursor query params to messaging sync endpoint", async 
 });
 
 test("markMessageRead posts message id", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-read");
 
   let capturedOptions = null;
@@ -181,7 +377,6 @@ test("markMessageRead posts message id", async () => {
 });
 
 test("markMessageDelivered posts message id", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-delivered");
 
   let capturedOptions = null;
@@ -197,7 +392,6 @@ test("markMessageDelivered posts message id", async () => {
 });
 
 test("updateMe patches mutable profile fields", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-profile");
 
   let capturedURL = "";
@@ -219,7 +413,6 @@ test("updateMe patches mutable profile fields", async () => {
 });
 
 test("getWalletTransfers sends history limit query params", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
   setToken("token-history");
 
   let capturedURL = "";
@@ -233,8 +426,7 @@ test("getWalletTransfers sends history limit query params", async () => {
   assert.equal(capturedURL, "http://localhost:8080/api/wallet/transfers?limit=5");
 });
 
-test("invalid token response triggers auth error handler", async () => {
-  process.env.VITE_API_BASE_URL = "http://localhost:8080";
+test("invalid token response without refresh token triggers auth error handler", async () => {
   setToken("expired");
 
   let receivedError = "";
@@ -246,6 +438,4 @@ test("invalid token response triggers auth error handler", async () => {
 
   await assert.rejects(() => getContacts(), /invalid token/);
   assert.equal(receivedError, "invalid token");
-
-  setAuthErrorHandler(null);
 });

@@ -1,18 +1,21 @@
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { PersonIcon, Pencil2Icon } from "@radix-ui/react-icons";
-import { getMe, getWallet, getWalletTransfers, updateMe } from "../api";
+import { getMe, getSessions, getWallet, getWalletTransfers, revokeSession, updateMe } from "../api";
 import SendMoneyForm from "./SendMoneyForm";
 
 export default function AccountPage({ handleLogout }) {
   const [user, setUser] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [transfers, setTransfers] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [profileForm, setProfileForm] = useState({ display_name: "", avatar_url: "" });
   const [profileStatus, setProfileStatus] = useState({ type: "", message: "" });
+  const [sessionStatus, setSessionStatus] = useState({ type: "", message: "" });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [revokingSessionID, setRevokingSessionID] = useState(null);
   const [showSendMoney, setShowSendMoney] = useState(false);
 
   useEffect(() => {
@@ -22,10 +25,11 @@ export default function AccountPage({ handleLogout }) {
       try {
         setLoading(true);
         setError(null);
-        const [userResponse, walletResponse, transfersResponse] = await Promise.all([
+        const [userResponse, walletResponse, transfersResponse, sessionsResponse] = await Promise.all([
           getMe(),
           getWallet(),
           getWalletTransfers({ limit: 10 }),
+          getSessions(),
         ]);
         if (cancelled) {
           return;
@@ -33,6 +37,7 @@ export default function AccountPage({ handleLogout }) {
         setUser(userResponse);
         setWallet(walletResponse);
         setTransfers(transfersResponse || []);
+        setSessions(sessionsResponse || []);
         setProfileForm({
           display_name: userResponse?.display_name || "",
           avatar_url: userResponse?.avatar_url || "",
@@ -62,6 +67,11 @@ export default function AccountPage({ handleLogout }) {
     ]);
     setWallet(walletResponse);
     setTransfers(transfersResponse || []);
+  };
+
+  const refreshSessions = async () => {
+    const sessionResponse = await getSessions();
+    setSessions(sessionResponse || []);
   };
 
   const handleProfileChange = (event) => {
@@ -94,6 +104,21 @@ export default function AccountPage({ handleLogout }) {
 
   const handleTransferSuccess = async () => {
     await refreshWalletData();
+  };
+
+  const handleRevokeSession = async (sessionID) => {
+    setRevokingSessionID(sessionID);
+    setSessionStatus({ type: "", message: "" });
+
+    try {
+      await revokeSession(sessionID);
+      await refreshSessions();
+      setSessionStatus({ type: "success", message: "Session revoked." });
+    } catch (err) {
+      setSessionStatus({ type: "error", message: err.message || "Failed to revoke session." });
+    } finally {
+      setRevokingSessionID(null);
+    }
   };
 
   if (loading) {
@@ -181,6 +206,50 @@ export default function AccountPage({ handleLogout }) {
           onCancel={() => setShowSendMoney(false)}
         />
       )}
+      <div className="wallet-card session-card">
+        <div className="card-heading">
+          <div>
+            <h4>Device Sessions</h4>
+            <p>Review active devices and revoke access per session.</p>
+          </div>
+        </div>
+        {sessions.length === 0 ? (
+          <p className="empty-chat-message">No active sessions found.</p>
+        ) : (
+          <ul className="session-list">
+            {sessions.map((session) => (
+              <li key={session.id} className="session-item">
+                <div className="session-copy">
+                  <div className="session-title-row">
+                    <strong>{session.device_label || "This device"}</strong>
+                    {session.current && <span className="session-badge">Current</span>}
+                  </div>
+                  <span>{session.user_agent || "Unknown client"}</span>
+                  <span>Last IP: {session.last_seen_ip || "unknown"}</span>
+                  <time dateTime={session.last_seen_at || session.created_at}>
+                    Last seen {new Date(session.last_seen_at || session.created_at).toLocaleString()}
+                  </time>
+                </div>
+                {!session.current && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => handleRevokeSession(session.id)}
+                    disabled={revokingSessionID === session.id}
+                  >
+                    {revokingSessionID === session.id ? "Revoking..." : "Revoke"}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {sessionStatus.message && (
+          <p className={`money-status ${sessionStatus.type === "error" ? "is-error" : "is-success"}`}>
+            {sessionStatus.message}
+          </p>
+        )}
+      </div>
       <div className="wallet-card transfer-history-card">
         <div className="card-heading">
           <div>
