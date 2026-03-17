@@ -2,11 +2,16 @@ package identity
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
 // UserID is the internal stable identifier used by the current centralized backend.
 type UserID int
+
+const MessagingKeyAlgorithmX3DHV1 = "x3dh-ed25519-x25519-v1"
+
+var ErrDeviceIdentityNotFound = errors.New("device identity not found")
 
 // Principal models an authenticated actor independent of credential type.
 type Principal struct {
@@ -68,6 +73,80 @@ type SessionTokens struct {
 type TokenClaims struct {
 	SubjectUserID UserID
 	SessionID     int64
+}
+
+type DeviceKeyState string
+
+const (
+	DeviceKeyStateActive  DeviceKeyState = "active"
+	DeviceKeyStateRevoked DeviceKeyState = "revoked"
+)
+
+type DeviceIdentity struct {
+	ID                    int64
+	UserID                UserID
+	Label                 string
+	Algorithm             string
+	IdentityKey           string
+	SignedPrekeyID        int64
+	SignedPrekey          string
+	SignedPrekeySignature string
+	State                 DeviceKeyState
+	PrekeyCount           int
+	CurrentSession        bool
+	CreatedAt             time.Time
+	PublishedAt           time.Time
+	RotatedAt             time.Time
+	RevokedAt             *time.Time
+}
+
+type DevicePrekey struct {
+	ID               int64
+	DeviceIdentityID int64
+	PrekeyID         int64
+	PublicKey        string
+	State            DeviceKeyState
+	CreatedAt        time.Time
+	RevokedAt        *time.Time
+}
+
+type DevicePrekeyUpload struct {
+	PrekeyID  int64  `json:"prekey_id"`
+	PublicKey string `json:"public_key"`
+}
+
+type RegisterDeviceIdentityRequest struct {
+	Label                 string
+	Algorithm             string
+	IdentityKey           string
+	SignedPrekeyID        int64
+	SignedPrekey          string
+	SignedPrekeySignature string
+	Prekeys               []DevicePrekeyUpload
+}
+
+type RotateDeviceIdentityRequest struct {
+	DeviceID              int64
+	SignedPrekeyID        int64
+	SignedPrekey          string
+	SignedPrekeySignature string
+	Prekeys               []DevicePrekeyUpload
+}
+
+type PublishPrekeysRequest struct {
+	DeviceID int64
+	Prekeys  []DevicePrekeyUpload
+}
+
+type DeviceDirectoryEntry struct {
+	DeviceIdentity
+	Prekeys []DevicePrekey
+}
+
+type DeviceDirectory struct {
+	UserID   UserID
+	Username string
+	Devices  []DeviceDirectoryEntry
 }
 
 // Authenticator validates credentials and returns a principal.
