@@ -4,9 +4,9 @@
 This document turns the existing product/design direction into a concrete implementation roadmap for the remaining feature work in this repository.
 
 It complements:
-- `docs/design/roadmap.md`: platform migration strategy
-- `docs/design/security.md`: security hardening direction
-- `docs/design/marketplace-payments.md`: ledger, escrow, and rail assumptions
+- `docs/roadmaps/platform-roadmap.md`: platform migration strategy
+- `docs/architecture/security.md`: security hardening direction
+- `docs/product/marketplace-payments.md`: ledger, escrow, and rail assumptions
 
 ## Current Baseline
 Implemented today:
@@ -89,7 +89,7 @@ Data and API work:
 - add `message_threads`
 - add `message_receipts` if `message_deliveries` is no longer sufficient
 - add `message_sync_cursors`
-- formalize sync payloads and cursor semantics in `docs/design/api.md`
+- formalize sync payloads and cursor semantics in `docs/architecture/api.md`
 
 Client work:
 - run sync on login, reconnect, and app resume

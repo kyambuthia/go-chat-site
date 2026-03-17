@@ -26,7 +26,7 @@ Introduce `server/internal/core/*` domain packages (types + interfaces only in t
 - `adapters/transport/wsrelay`: current centralized websocket relay implementation
 - `adapters/httpapi`: current mux HTTP handlers/routing (route paths preserved)
 
-Compatibility shims may remain temporarily (`internal/api`) to reduce risk and keep imports stable while refactoring incrementally. The `internal/ws` shim has been retired (see `docs/adr/ws-shim-retirement.md`).
+Compatibility shims may remain temporarily (`internal/api`) to reduce risk and keep imports stable while refactoring incrementally. The `internal/ws` shim has been retired (see `docs/architecture/decisions/ws-shim-retirement.md`).
 
 ## Consequences
 Positive:

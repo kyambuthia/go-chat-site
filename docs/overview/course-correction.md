@@ -47,7 +47,7 @@ Use **core domain interfaces + adapters**.
 - Adapters implement transport, HTTP, persistence, and external integrations.
 - Compatibility shims are acceptable during migration if they preserve client behavior.
 
-See `docs/adr/architecture-boundaries.md`.
+See `docs/architecture/decisions/architecture-boundaries.md`.
 
 ## Non-Negotiable Engineering Approach
 - TDD first for behavior changes

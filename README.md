@@ -35,6 +35,15 @@ cd client && npm run dev
 
 Navigate to `http://localhost:5173`.
 
+## Documentation
+
+Project documentation is organized under `docs/`:
+- `docs/overview/` for product direction
+- `docs/architecture/` for system contracts and ADRs
+- `docs/roadmaps/` for delivery plans
+- `docs/product/` for marketplace/payment strategy
+- `docs/operations/` for runbooks and operator procedures
+
 ## Verify Locally
 
 ```bash
