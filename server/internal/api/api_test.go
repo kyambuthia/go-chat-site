@@ -328,6 +328,173 @@ func TestAuthHandlers(t *testing.T) {
 			t.Fatalf("logged out me status = %d, want %d; body=%s", firstMeRR.Code, http.StatusUnauthorized, firstMeRR.Body.String())
 		}
 	})
+
+	t.Run("TestDeviceKeys_RegisterRotateDirectoryAndRevoke", func(t *testing.T) {
+		type authResponse struct {
+			AccessToken string `json:"access_token"`
+		}
+
+		login := func(username string) authResponse {
+			reqBody, _ := json.Marshal(map[string]string{
+				"username":     username,
+				"password":     "password123",
+				"device_label": "Phase4 Browser",
+			})
+			req := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBuffer(reqBody))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+			a.ServeHTTP(rr, req)
+			if rr.Code != http.StatusOK {
+				t.Fatalf("login(%s) status = %d, want %d; body=%s", username, rr.Code, http.StatusOK, rr.Body.String())
+			}
+
+			var resp authResponse
+			if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal login(%s): %v", username, err)
+			}
+			return resp
+		}
+
+		if _, err := s.CreateUser("phase4viewer", "password123"); err != nil {
+			t.Fatalf("create phase4viewer: %v", err)
+		}
+
+		testUserAuth := login("testuser")
+		viewerAuth := login("phase4viewer")
+
+		registerReqBody, _ := json.Marshal(map[string]any{
+			"label":                   "Alice Laptop",
+			"identity_key":            "identity-key-a",
+			"signed_prekey_id":        1,
+			"signed_prekey":           "signed-prekey-a",
+			"signed_prekey_signature": "signature-a",
+			"prekeys": []map[string]any{
+				{"prekey_id": 1, "public_key": "prekey-a1"},
+				{"prekey_id": 2, "public_key": "prekey-a2"},
+			},
+		})
+		registerReq := httptest.NewRequest(http.MethodPost, "/api/devices", bytes.NewBuffer(registerReqBody))
+		registerReq.Header.Set("Authorization", "Bearer "+testUserAuth.AccessToken)
+		registerReq.Header.Set("Content-Type", "application/json")
+		registerRR := httptest.NewRecorder()
+		a.ServeHTTP(registerRR, registerReq)
+
+		if registerRR.Code != http.StatusCreated {
+			t.Fatalf("register device status = %d, want %d; body=%s", registerRR.Code, http.StatusCreated, registerRR.Body.String())
+		}
+
+		var device map[string]any
+		if err := json.Unmarshal(registerRR.Body.Bytes(), &device); err != nil {
+			t.Fatalf("unmarshal register device response: %v", err)
+		}
+		deviceID := int64(device["id"].(float64))
+		if device["label"] != "Alice Laptop" {
+			t.Fatalf("device label = %v, want Alice Laptop", device["label"])
+		}
+		if device["current_session"] != true {
+			t.Fatalf("expected current_session true, got %v", device["current_session"])
+		}
+
+		listReq := httptest.NewRequest(http.MethodGet, "/api/devices", nil)
+		listReq.Header.Set("Authorization", "Bearer "+testUserAuth.AccessToken)
+		listRR := httptest.NewRecorder()
+		a.ServeHTTP(listRR, listReq)
+
+		if listRR.Code != http.StatusOK {
+			t.Fatalf("list devices status = %d, want %d; body=%s", listRR.Code, http.StatusOK, listRR.Body.String())
+		}
+
+		var devices []map[string]any
+		if err := json.Unmarshal(listRR.Body.Bytes(), &devices); err != nil {
+			t.Fatalf("unmarshal devices: %v", err)
+		}
+		if len(devices) == 0 {
+			t.Fatal("expected at least one device")
+		}
+		if got := int(devices[0]["prekey_count"].(float64)); got < 2 {
+			t.Fatalf("prekey_count = %d, want at least 2", got)
+		}
+
+		rotateReqBody, _ := json.Marshal(map[string]any{
+			"device_id":               deviceID,
+			"signed_prekey_id":        2,
+			"signed_prekey":           "signed-prekey-b",
+			"signed_prekey_signature": "signature-b",
+			"prekeys": []map[string]any{
+				{"prekey_id": 3, "public_key": "prekey-a3"},
+			},
+		})
+		rotateReq := httptest.NewRequest(http.MethodPost, "/api/devices/rotate", bytes.NewBuffer(rotateReqBody))
+		rotateReq.Header.Set("Authorization", "Bearer "+testUserAuth.AccessToken)
+		rotateReq.Header.Set("Content-Type", "application/json")
+		rotateRR := httptest.NewRecorder()
+		a.ServeHTTP(rotateRR, rotateReq)
+
+		if rotateRR.Code != http.StatusOK {
+			t.Fatalf("rotate device status = %d, want %d; body=%s", rotateRR.Code, http.StatusOK, rotateRR.Body.String())
+		}
+
+		publishReqBody, _ := json.Marshal(map[string]any{
+			"device_id": deviceID,
+			"prekeys": []map[string]any{
+				{"prekey_id": 4, "public_key": "prekey-a4"},
+			},
+		})
+		publishReq := httptest.NewRequest(http.MethodPost, "/api/messaging/prekeys", bytes.NewBuffer(publishReqBody))
+		publishReq.Header.Set("Authorization", "Bearer "+testUserAuth.AccessToken)
+		publishReq.Header.Set("Content-Type", "application/json")
+		publishRR := httptest.NewRecorder()
+		a.ServeHTTP(publishRR, publishReq)
+
+		if publishRR.Code != http.StatusOK {
+			t.Fatalf("publish prekeys status = %d, want %d; body=%s", publishRR.Code, http.StatusOK, publishRR.Body.String())
+		}
+
+		directoryReq := httptest.NewRequest(http.MethodGet, "/api/devices/directory?username=testuser", nil)
+		directoryReq.Header.Set("Authorization", "Bearer "+viewerAuth.AccessToken)
+		directoryRR := httptest.NewRecorder()
+		a.ServeHTTP(directoryRR, directoryReq)
+
+		if directoryRR.Code != http.StatusOK {
+			t.Fatalf("directory status = %d, want %d; body=%s", directoryRR.Code, http.StatusOK, directoryRR.Body.String())
+		}
+
+		var directory map[string]any
+		if err := json.Unmarshal(directoryRR.Body.Bytes(), &directory); err != nil {
+			t.Fatalf("unmarshal directory: %v", err)
+		}
+		dirDevices := directory["devices"].([]any)
+		if len(dirDevices) != 1 {
+			t.Fatalf("directory devices len = %d, want 1", len(dirDevices))
+		}
+		firstDevice := dirDevices[0].(map[string]any)
+		if len(firstDevice["prekeys"].([]any)) < 4 {
+			t.Fatalf("directory prekeys len = %d, want at least 4", len(firstDevice["prekeys"].([]any)))
+		}
+
+		revokeReqBody, _ := json.Marshal(map[string]any{"device_id": deviceID})
+		revokeReq := httptest.NewRequest(http.MethodDelete, "/api/devices", bytes.NewBuffer(revokeReqBody))
+		revokeReq.Header.Set("Authorization", "Bearer "+testUserAuth.AccessToken)
+		revokeReq.Header.Set("Content-Type", "application/json")
+		revokeRR := httptest.NewRecorder()
+		a.ServeHTTP(revokeRR, revokeReq)
+
+		if revokeRR.Code != http.StatusNoContent {
+			t.Fatalf("revoke device status = %d, want %d; body=%s", revokeRR.Code, http.StatusNoContent, revokeRR.Body.String())
+		}
+
+		directoryRR = httptest.NewRecorder()
+		a.ServeHTTP(directoryRR, directoryReq)
+		if directoryRR.Code != http.StatusOK {
+			t.Fatalf("directory after revoke status = %d, want %d; body=%s", directoryRR.Code, http.StatusOK, directoryRR.Body.String())
+		}
+		if err := json.Unmarshal(directoryRR.Body.Bytes(), &directory); err != nil {
+			t.Fatalf("unmarshal directory after revoke: %v", err)
+		}
+		if len(directory["devices"].([]any)) != 0 {
+			t.Fatalf("expected empty directory after revoke, got %v", directory["devices"])
+		}
+	})
 }
 
 func TestContactsAndInvitesRoutes_Compatibility(t *testing.T) {
