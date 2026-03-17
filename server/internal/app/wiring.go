@@ -27,6 +27,7 @@ type Wiring struct {
 	Sessions             coreid.SessionService
 	Tokens               coreid.TokenService
 	Identity             coreid.ProfileService
+	Devices              coreid.DeviceIdentityService
 	Ledger               coreledger.Service
 	MessagingPersistence coremsg.PersistenceService
 	MessagingThreads     coremsg.ThreadSummaryService
@@ -45,6 +46,7 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 	}
 	if dbProvider, ok := dataStore.(interface{ SQLDB() *sql.DB }); ok && dbProvider.SQLDB() != nil {
 		tokenAdapter.DB = dbProvider.SQLDB()
+		deviceKeysAdapter := &sqliteidentity.DeviceKeysAdapter{DB: dbProvider.SQLDB()}
 		messagingAdapter := &sqlitemessaging.Adapter{DB: dbProvider.SQLDB()}
 		messagingPersistence = coremsg.NewPersistenceService(messagingAdapter)
 		return &Wiring{
@@ -53,6 +55,7 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 			Sessions:             coreid.NewSessionService(tokenAdapter),
 			Tokens:               tokenAdapter,
 			Identity:             coreid.NewProfileService(identityAdapter),
+			Devices:              coreid.NewDeviceIdentityService(deviceKeysAdapter),
 			Ledger:               coreledger.NewService(ledgerAdapter, ledgerAdapter),
 			MessagingPersistence: messagingPersistence,
 			MessagingThreads:     coremsg.NewThreadSummaryService(messagingAdapter),
@@ -66,6 +69,7 @@ func NewWiring(dataStore store.APIStore) *Wiring {
 		Sessions:             coreid.NewSessionService(tokenAdapter),
 		Tokens:               tokenAdapter,
 		Identity:             coreid.NewProfileService(identityAdapter),
+		Devices:              nil,
 		Ledger:               coreledger.NewService(ledgerAdapter, ledgerAdapter),
 		MessagingPersistence: messagingPersistence,
 	}
