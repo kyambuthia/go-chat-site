@@ -32,7 +32,7 @@ func TestNewWiring_ComposesWorkingCoreServices(t *testing.T) {
 
 	s := newTestStore(t)
 	w := NewWiring(s)
-	if w == nil || w.Auth == nil || w.Sessions == nil || w.Tokens == nil || w.Identity == nil || w.Contacts == nil || w.Ledger == nil || w.MessagingThreads == nil {
+	if w == nil || w.Auth == nil || w.Sessions == nil || w.Tokens == nil || w.Identity == nil || w.Devices == nil || w.Contacts == nil || w.Ledger == nil || w.MessagingThreads == nil {
 		t.Fatalf("unexpected nil wiring/services: %+v", w)
 	}
 
@@ -68,6 +68,23 @@ func TestNewWiring_ComposesWorkingCoreServices(t *testing.T) {
 	}
 	if profile.Username != "alice" {
 		t.Fatalf("profile username = %q, want alice", profile.Username)
+	}
+
+	device, err := w.Devices.RegisterDeviceIdentity(context.Background(), principal.ID, tokens.Session.ID, coreid.RegisterDeviceIdentityRequest{
+		Label:                 "Laptop",
+		IdentityKey:           "identity-key",
+		SignedPrekeyID:        1,
+		SignedPrekey:          "signed-prekey",
+		SignedPrekeySignature: "signature",
+		Prekeys: []coreid.DevicePrekeyUpload{
+			{PrekeyID: 1, PublicKey: "prekey-1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RegisterDeviceIdentity error: %v", err)
+	}
+	if !device.CurrentSession {
+		t.Fatalf("expected device to be associated with current session: %+v", device)
 	}
 
 	bobPrincipal, err := w.Auth.RegisterPassword(context.Background(), coreid.PasswordCredential{
