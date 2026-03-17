@@ -44,6 +44,7 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	walletHandler := &WalletHandler{Ledger: wiring.Ledger}
 	messagesHandler := &MessagesHandler{Messaging: wiring.MessagingPersistence, Threads: wiring.MessagingThreads, ReceiptTransport: hub}
 	meHandler := &MeHandler{Identity: wiring.Identity}
+	deviceKeysHandler := &DeviceKeysHandler{Devices: wiring.Devices}
 
 	mux.HandleFunc("/healthz", healthzHandler)
 	mux.HandleFunc("/readyz", readyzHandler(readinessCheck(dataStore)))
@@ -103,6 +104,21 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.Handle("/api/messaging/sync", authMiddleware(http.HandlerFunc(messagesHandler.GetSync)))
 	mux.Handle("/api/messages/read", authMiddleware(http.HandlerFunc(messagesHandler.MarkRead)))
 	mux.Handle("/api/messages/delivered", authMiddleware(http.HandlerFunc(messagesHandler.MarkDelivered)))
+	mux.Handle("/api/devices", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			deviceKeysHandler.GetDevices(w, r)
+		case http.MethodPost:
+			deviceKeysHandler.RegisterDevice(w, r)
+		case http.MethodDelete:
+			deviceKeysHandler.RevokeDevice(w, r)
+		default:
+			web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		}
+	})))
+	mux.Handle("/api/devices/rotate", authMiddleware(http.HandlerFunc(deviceKeysHandler.RotateDevice)))
+	mux.Handle("/api/messaging/prekeys", authMiddleware(http.HandlerFunc(deviceKeysHandler.PublishPrekeys)))
+	mux.Handle("/api/devices/directory", authMiddleware(http.HandlerFunc(deviceKeysHandler.GetDirectory)))
 
 	mux.Handle("/ws", wsHandshakeLimiter(wsrelay.WebSocketHandler(hub, app.WSAuthenticator(wiring.Tokens, dataStore), app.WSResolveUserID(dataStore))))
 
