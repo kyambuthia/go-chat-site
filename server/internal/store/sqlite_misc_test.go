@@ -20,6 +20,18 @@ func newStoreForTest(t *testing.T) *SqliteStore {
 	return s
 }
 
+func TestNewSqliteStore_InMemoryUsesSingleConnection(t *testing.T) {
+	s, err := NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+
+	if got := s.DB.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("MaxOpenConnections = %d, want 1 for in-memory sqlite", got)
+	}
+}
+
 func TestCreateUser_RejectsBlankUsername(t *testing.T) {
 	s := newStoreForTest(t)
 	if _, err := s.CreateUser("   ", "password123"); err == nil {
