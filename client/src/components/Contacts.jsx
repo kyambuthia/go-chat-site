@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { getContacts, removeContact } from "../api";
+import { addContact, getContacts, removeContact } from "../api";
 import Invite from "./Invite";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { PersonIcon, MagnifyingGlassIcon } from "@radix-ui/react-icons";
@@ -9,8 +9,10 @@ export default function Contacts({ setSelectedContact, onlineUsers }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [actionError, setActionError] = useState(null);
+  const [actionStatus, setActionStatus] = useState({ type: "", message: "" });
   const [removingContactID, setRemovingContactID] = useState(null);
+  const [newContactUsername, setNewContactUsername] = useState("");
+  const [addingContact, setAddingContact] = useState(false);
 
   useEffect(() => {
     const loadContacts = async () => {
@@ -52,17 +54,43 @@ export default function Contacts({ setSelectedContact, onlineUsers }) {
 
   const handleRemoveContact = async (event, contactID) => {
     event.stopPropagation();
-    setActionError(null);
+    setActionStatus({ type: "", message: "" });
     setRemovingContactID(contactID);
 
     try {
       await removeContact(contactID);
       setContacts((currentContacts) => currentContacts.filter((contact) => contact.id !== contactID));
+      setActionStatus({ type: "success", message: "Contact removed." });
     } catch (err) {
       console.error("Failed to remove contact:", err);
-      setActionError(err.message || "Could not remove contact.");
+      setActionStatus({ type: "error", message: err.message || "Could not remove contact." });
     } finally {
       setRemovingContactID(null);
+    }
+  };
+
+  const handleAddContact = async (event) => {
+    event.preventDefault();
+    const username = newContactUsername.trim();
+    if (!username) {
+      return;
+    }
+
+    setActionStatus({ type: "", message: "" });
+    setAddingContact(true);
+
+    try {
+      await addContact(username);
+      const refreshedContacts = await getContacts();
+      setContacts(refreshedContacts || []);
+      setNewContactUsername("");
+      setQuery("");
+      setActionStatus({ type: "success", message: `Added ${username} to contacts.` });
+    } catch (err) {
+      console.error("Failed to add contact:", err);
+      setActionStatus({ type: "error", message: err.message || "Could not add contact." });
+    } finally {
+      setAddingContact(false);
     }
   };
 
@@ -70,8 +98,31 @@ export default function Contacts({ setSelectedContact, onlineUsers }) {
     <div className="contacts-list">
       <h2>My Contacts</h2>
       <div className="contacts-actions">
-        <Invite compact />
-        {actionError && <p className="error-message contacts-error">{actionError}</p>}
+        <div className="contacts-action-grid">
+          <form className="contacts-inline-form" onSubmit={handleAddContact}>
+            <div className="form-group">
+              <label htmlFor="add-contact-username">Add contact directly</label>
+              <input
+                id="add-contact-username"
+                type="text"
+                value={newContactUsername}
+                onChange={(event) => setNewContactUsername(event.target.value)}
+                placeholder="username"
+                disabled={addingContact}
+                required
+              />
+            </div>
+            <button type="submit" disabled={addingContact || !newContactUsername.trim()}>
+              {addingContact ? "Adding..." : "Add Contact"}
+            </button>
+          </form>
+          <Invite compact />
+          {actionStatus.message && (
+            <p className={`money-status contacts-status ${actionStatus.type === "error" ? "is-error" : "is-success"}`}>
+              {actionStatus.message}
+            </p>
+          )}
+        </div>
       </div>
       {contacts.length === 0 ? (
         <div className="empty-contacts">
