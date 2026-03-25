@@ -220,14 +220,26 @@ func (a *DeviceKeysAdapter) GetDeviceDirectory(ctx context.Context, username str
 	if err != nil {
 		return coreid.DeviceDirectory{}, err
 	}
-	defer rows.Close()
 
-	directory.Devices = make([]coreid.DeviceDirectoryEntry, 0)
+	devices := make([]coreid.DeviceIdentity, 0)
 	for rows.Next() {
 		device, err := scanPublicDirectoryDevice(rows)
 		if err != nil {
+			_ = rows.Close()
 			return coreid.DeviceDirectory{}, err
 		}
+		devices = append(devices, device)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return coreid.DeviceDirectory{}, err
+	}
+	if err := rows.Close(); err != nil {
+		return coreid.DeviceDirectory{}, err
+	}
+
+	directory.Devices = make([]coreid.DeviceDirectoryEntry, 0, len(devices))
+	for _, device := range devices {
 		prekeys, err := a.listActivePrekeys(ctx, device.ID)
 		if err != nil {
 			return coreid.DeviceDirectory{}, err
@@ -237,9 +249,6 @@ func (a *DeviceKeysAdapter) GetDeviceDirectory(ctx context.Context, username str
 			DeviceIdentity: device,
 			Prekeys:        prekeys,
 		})
-	}
-	if err := rows.Err(); err != nil {
-		return coreid.DeviceDirectory{}, err
 	}
 	return directory, nil
 }
