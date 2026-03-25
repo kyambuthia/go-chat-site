@@ -68,6 +68,7 @@ type StoredMessage struct {
 	DeliveredAt     *time.Time
 	ReadAt          *time.Time
 	ClientMessageID int64
+	DeliveryFailed  bool
 }
 
 // Transport is the adapter seam for centralized relay today and P2P transports later.
