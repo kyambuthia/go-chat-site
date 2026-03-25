@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -44,6 +45,13 @@ func NewSqliteStore(dataSourceName string) (*SqliteStore, error) {
 		return nil, err
 	}
 
+	// SQLite in-memory databases are scoped per connection. Keep tests and
+	// short-lived local stores on a single connection so schema state is shared.
+	if isInMemorySQLiteDSN(dataSourceName) {
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	}
+
 	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
 		return nil, err
 	}
@@ -53,4 +61,12 @@ func NewSqliteStore(dataSourceName string) (*SqliteStore, error) {
 	}
 
 	return &SqliteStore{DB: db}, nil
+}
+
+func isInMemorySQLiteDSN(dataSourceName string) bool {
+	trimmed := strings.TrimSpace(dataSourceName)
+	if trimmed == ":memory:" {
+		return true
+	}
+	return strings.HasPrefix(trimmed, "file::memory:")
 }
