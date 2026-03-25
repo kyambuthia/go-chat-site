@@ -64,6 +64,8 @@ Current sync payload notes:
 - sync responses return `cursor.after_id`, `cursor.next_after_id`, `messages`, and `has_more`
 - clients should treat `cursor.next_after_id` as the next durable checkpoint after each page
 - `GET /api/messages/outbox` and `GET /api/messaging/sync` may include `client_message_id` on sent messages so the client can reconcile optimistic local bubbles with durable stored messages after reconnect
+- sent messages may include `delivery_failed: true` when the original real-time send failed because the recipient was offline; if `delivered_at` is still missing and `delivery_failed` is absent, clients should treat the message as pending rather than failed
+- `GET /api/messaging/threads` derives `unread_count` and `last_message` from user-visible thread activity; control-style microapp updates such as `payment_request_update` still appear in thread history/sync payloads, but they do not increment unread counts or replace thread-list previews
 
 ## Current Auth Session Contract
 Login and refresh responses return:
