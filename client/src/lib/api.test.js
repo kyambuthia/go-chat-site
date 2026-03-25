@@ -7,6 +7,7 @@ import {
   ensureAccessToken,
   getAccessToken,
   getContacts,
+  getDevices,
   getInbox,
   getMessageThreads,
   getOutbox,
@@ -18,7 +19,10 @@ import {
   markMessageDelivered,
   markMessageRead,
   markThreadRead,
+  publishDevicePrekeys,
   removeContact,
+  registerDeviceIdentity,
+  revokeDeviceIdentity,
   revokeSession,
   sendMoney,
   setAuthErrorHandler,
@@ -224,6 +228,23 @@ test("getSessions uses the protected sessions endpoint", async () => {
   assert.equal(sessions.length, 1);
 });
 
+test("getDevices uses the protected devices endpoint", async () => {
+  setToken("token-devices");
+
+  let capturedURL = "";
+  global.fetch = async (url, options) => {
+    capturedURL = url;
+    assert.equal(options.headers.Authorization, "Bearer token-devices");
+    return jsonResponse(200, [{ id: 3, label: "Laptop" }]);
+  };
+
+  const devices = await getDevices();
+
+  assert.equal(capturedURL, "http://localhost:8080/api/devices");
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0].label, "Laptop");
+});
+
 test("revokeSession deletes by session id", async () => {
   setToken("token-revoke");
 
@@ -237,6 +258,70 @@ test("revokeSession deletes by session id", async () => {
 
   assert.equal(capturedOptions.method, "DELETE");
   assert.deepEqual(JSON.parse(capturedOptions.body), { session_id: 42 });
+});
+
+test("registerDeviceIdentity posts the device identity payload", async () => {
+  setToken("token-device-register");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(201, { id: 5, label: "Phone" });
+  };
+
+  await registerDeviceIdentity({
+    label: "Phone",
+    algorithm: "x3dh-ed25519-x25519-v1",
+    identity_key: "identity-public",
+    signed_prekey_id: 77,
+    signed_prekey: "signed-prekey-public",
+    signed_prekey_signature: "signature",
+    prekeys: [{ prekey_id: 1, public_key: "prekey-public" }],
+  });
+
+  assert.equal(capturedOptions.method, "POST");
+  assert.deepEqual(JSON.parse(capturedOptions.body), {
+    label: "Phone",
+    algorithm: "x3dh-ed25519-x25519-v1",
+    identity_key: "identity-public",
+    signed_prekey_id: 77,
+    signed_prekey: "signed-prekey-public",
+    signed_prekey_signature: "signature",
+    prekeys: [{ prekey_id: 1, public_key: "prekey-public" }],
+  });
+});
+
+test("publishDevicePrekeys posts the device id and prekeys", async () => {
+  setToken("token-device-prekeys");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(200, [{ prekey_id: 2 }]);
+  };
+
+  await publishDevicePrekeys(19, [{ prekey_id: 2, public_key: "prekey-two" }]);
+
+  assert.equal(capturedOptions.method, "POST");
+  assert.deepEqual(JSON.parse(capturedOptions.body), {
+    device_id: 19,
+    prekeys: [{ prekey_id: 2, public_key: "prekey-two" }],
+  });
+});
+
+test("revokeDeviceIdentity deletes by device id", async () => {
+  setToken("token-device-revoke");
+
+  let capturedOptions = null;
+  global.fetch = async (_url, options) => {
+    capturedOptions = options;
+    return jsonResponse(204, null, { "content-length": "0" });
+  };
+
+  await revokeDeviceIdentity(55);
+
+  assert.equal(capturedOptions.method, "DELETE");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { device_id: 55 });
 });
 
 test("getContacts sends Authorization header and uses VITE_API_BASE_URL", async () => {

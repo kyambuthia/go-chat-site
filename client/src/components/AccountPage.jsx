@@ -1,21 +1,87 @@
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import { PersonIcon, Pencil2Icon } from "@radix-ui/react-icons";
-import { getMe, getSessions, getWallet, getWalletTransfers, revokeSession, updateMe } from "../api";
+import {
+  getDevices,
+  getMe,
+  getSessions,
+  getWallet,
+  getWalletTransfers,
+  publishDevicePrekeys,
+  registerDeviceIdentity,
+  revokeDeviceIdentity,
+  revokeSession,
+  updateMe,
+} from "../api";
 import SendMoneyForm from "./SendMoneyForm";
+
+const DEVICE_ALGORITHM = "x3dh-ed25519-x25519-v1";
+
+const emptyDeviceForm = () => ({
+  label: "",
+  algorithm: DEVICE_ALGORITHM,
+  identity_key: "",
+  signed_prekey_id: "",
+  signed_prekey: "",
+  signed_prekey_signature: "",
+  prekeys_text: "",
+});
+
+const parsePrekeysInput = (value) => {
+  const lines = value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  return lines.map((line) => {
+    const separatorIndex = line.includes(":") ? line.indexOf(":") : line.indexOf(",");
+    if (separatorIndex <= 0 || separatorIndex >= line.length - 1) {
+      throw new Error("Prekeys must be entered one per line as id:key.");
+    }
+
+    const prekeyID = Number(line.slice(0, separatorIndex).trim());
+    if (!Number.isInteger(prekeyID) || prekeyID <= 0) {
+      throw new Error("Each prekey line must start with a positive integer id.");
+    }
+
+    const publicKey = line.slice(separatorIndex + 1).trim();
+    if (!publicKey) {
+      throw new Error("Each prekey line must include a public key.");
+    }
+
+    return { prekey_id: prekeyID, public_key: publicKey };
+  });
+};
+
+const formatKeyPreview = (value) => {
+  if (!value) {
+    return "Not published";
+  }
+  if (value.length <= 28) {
+    return value;
+  }
+  return `${value.slice(0, 14)}...${value.slice(-10)}`;
+};
 
 export default function AccountPage({ handleLogout }) {
   const [user, setUser] = useState(null);
   const [wallet, setWallet] = useState(null);
   const [transfers, setTransfers] = useState([]);
   const [sessions, setSessions] = useState([]);
+  const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [profileForm, setProfileForm] = useState({ display_name: "", avatar_url: "" });
   const [profileStatus, setProfileStatus] = useState({ type: "", message: "" });
   const [sessionStatus, setSessionStatus] = useState({ type: "", message: "" });
+  const [deviceForm, setDeviceForm] = useState(emptyDeviceForm);
+  const [deviceStatus, setDeviceStatus] = useState({ type: "", message: "" });
+  const [publishInputs, setPublishInputs] = useState({});
   const [savingProfile, setSavingProfile] = useState(false);
+  const [savingDevice, setSavingDevice] = useState(false);
   const [revokingSessionID, setRevokingSessionID] = useState(null);
+  const [revokingDeviceID, setRevokingDeviceID] = useState(null);
+  const [publishingDeviceID, setPublishingDeviceID] = useState(null);
   const [showSendMoney, setShowSendMoney] = useState(false);
 
   useEffect(() => {
@@ -25,11 +91,12 @@ export default function AccountPage({ handleLogout }) {
       try {
         setLoading(true);
         setError(null);
-        const [userResponse, walletResponse, transfersResponse, sessionsResponse] = await Promise.all([
+        const [userResponse, walletResponse, transfersResponse, sessionsResponse, devicesResponse] = await Promise.all([
           getMe(),
           getWallet(),
           getWalletTransfers({ limit: 10 }),
           getSessions(),
+          getDevices(),
         ]);
         if (cancelled) {
           return;
@@ -38,6 +105,7 @@ export default function AccountPage({ handleLogout }) {
         setWallet(walletResponse);
         setTransfers(transfersResponse || []);
         setSessions(sessionsResponse || []);
+        setDevices(devicesResponse || []);
         setProfileForm({
           display_name: userResponse?.display_name || "",
           avatar_url: userResponse?.avatar_url || "",
@@ -74,9 +142,23 @@ export default function AccountPage({ handleLogout }) {
     setSessions(sessionResponse || []);
   };
 
+  const refreshDevices = async () => {
+    const deviceResponse = await getDevices();
+    setDevices(deviceResponse || []);
+  };
+
   const handleProfileChange = (event) => {
     const { name, value } = event.target;
     setProfileForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleDeviceFormChange = (event) => {
+    const { name, value } = event.target;
+    setDeviceForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handlePublishInputChange = (deviceID, value) => {
+    setPublishInputs((current) => ({ ...current, [deviceID]: value }));
   };
 
   const handleProfileSubmit = async (event) => {
@@ -118,6 +200,65 @@ export default function AccountPage({ handleLogout }) {
       setSessionStatus({ type: "error", message: err.message || "Failed to revoke session." });
     } finally {
       setRevokingSessionID(null);
+    }
+  };
+
+  const handleRegisterDevice = async (event) => {
+    event.preventDefault();
+    setSavingDevice(true);
+    setDeviceStatus({ type: "", message: "" });
+
+    try {
+      const prekeys = parsePrekeysInput(deviceForm.prekeys_text);
+      await registerDeviceIdentity({
+        label: deviceForm.label.trim(),
+        algorithm: deviceForm.algorithm.trim() || DEVICE_ALGORITHM,
+        identity_key: deviceForm.identity_key.trim(),
+        signed_prekey_id: Number(deviceForm.signed_prekey_id),
+        signed_prekey: deviceForm.signed_prekey.trim(),
+        signed_prekey_signature: deviceForm.signed_prekey_signature.trim(),
+        prekeys,
+      });
+      await refreshDevices();
+      setDeviceForm(emptyDeviceForm());
+      setDeviceStatus({ type: "success", message: "Device identity registered." });
+    } catch (err) {
+      setDeviceStatus({ type: "error", message: err.message || "Failed to register device identity." });
+    } finally {
+      setSavingDevice(false);
+    }
+  };
+
+  const handlePublishPrekeys = async (event, deviceID) => {
+    event.preventDefault();
+    setPublishingDeviceID(deviceID);
+    setDeviceStatus({ type: "", message: "" });
+
+    try {
+      const prekeys = parsePrekeysInput(publishInputs[deviceID] || "");
+      await publishDevicePrekeys(deviceID, prekeys);
+      await refreshDevices();
+      setPublishInputs((current) => ({ ...current, [deviceID]: "" }));
+      setDeviceStatus({ type: "success", message: "Prekeys published." });
+    } catch (err) {
+      setDeviceStatus({ type: "error", message: err.message || "Failed to publish prekeys." });
+    } finally {
+      setPublishingDeviceID(null);
+    }
+  };
+
+  const handleRevokeDevice = async (deviceID) => {
+    setRevokingDeviceID(deviceID);
+    setDeviceStatus({ type: "", message: "" });
+
+    try {
+      await revokeDeviceIdentity(deviceID);
+      await refreshDevices();
+      setDeviceStatus({ type: "success", message: "Device identity revoked." });
+    } catch (err) {
+      setDeviceStatus({ type: "error", message: err.message || "Failed to revoke device identity." });
+    } finally {
+      setRevokingDeviceID(null);
     }
   };
 
@@ -247,6 +388,172 @@ export default function AccountPage({ handleLogout }) {
         {sessionStatus.message && (
           <p className={`money-status ${sessionStatus.type === "error" ? "is-error" : "is-success"}`}>
             {sessionStatus.message}
+          </p>
+        )}
+      </div>
+      <div className="wallet-card device-card">
+        <div className="card-heading">
+          <div>
+            <h4>Device Identities</h4>
+            <p>Register public device keys now so encrypted messaging can use them later.</p>
+          </div>
+        </div>
+        <form className="device-form" onSubmit={handleRegisterDevice}>
+          <div className="form-group">
+            <label htmlFor="device_label">Label</label>
+            <input
+              id="device_label"
+              name="label"
+              type="text"
+              value={deviceForm.label}
+              onChange={handleDeviceFormChange}
+              placeholder="Phone, laptop, tablet"
+              disabled={savingDevice}
+            />
+          </div>
+          <div className="device-form-grid">
+            <div className="form-group">
+              <label htmlFor="device_algorithm">Algorithm</label>
+              <input
+                id="device_algorithm"
+                name="algorithm"
+                type="text"
+                value={deviceForm.algorithm}
+                onChange={handleDeviceFormChange}
+                disabled={savingDevice}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="signed_prekey_id">Signed Prekey ID</label>
+              <input
+                id="signed_prekey_id"
+                name="signed_prekey_id"
+                type="number"
+                min="1"
+                value={deviceForm.signed_prekey_id}
+                onChange={handleDeviceFormChange}
+                placeholder="1"
+                disabled={savingDevice}
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label htmlFor="identity_key">Identity Key</label>
+            <textarea
+              id="identity_key"
+              name="identity_key"
+              rows="3"
+              value={deviceForm.identity_key}
+              onChange={handleDeviceFormChange}
+              placeholder="Public identity key"
+              disabled={savingDevice}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="signed_prekey">Signed Prekey</label>
+            <textarea
+              id="signed_prekey"
+              name="signed_prekey"
+              rows="3"
+              value={deviceForm.signed_prekey}
+              onChange={handleDeviceFormChange}
+              placeholder="Current signed prekey public value"
+              disabled={savingDevice}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="signed_prekey_signature">Signed Prekey Signature</label>
+            <textarea
+              id="signed_prekey_signature"
+              name="signed_prekey_signature"
+              rows="2"
+              value={deviceForm.signed_prekey_signature}
+              onChange={handleDeviceFormChange}
+              placeholder="Signature over the signed prekey"
+              disabled={savingDevice}
+            />
+          </div>
+          <div className="form-group">
+            <label htmlFor="device_prekeys_text">Prekeys</label>
+            <textarea
+              id="device_prekeys_text"
+              name="prekeys_text"
+              rows="4"
+              value={deviceForm.prekeys_text}
+              onChange={handleDeviceFormChange}
+              placeholder={"One per line as id:key\n1:base64-public-key\n2:base64-public-key"}
+              disabled={savingDevice}
+            />
+            <p className="device-hint">Enter public prekeys one per line using <code>id:key</code>.</p>
+          </div>
+          <div className="profile-actions">
+            <button type="submit" disabled={savingDevice}>
+              {savingDevice ? "Registering..." : "Register Device Identity"}
+            </button>
+          </div>
+        </form>
+        {devices.length === 0 ? (
+          <p className="empty-chat-message">No device identities registered yet.</p>
+        ) : (
+          <ul className="device-list">
+            {devices.map((device) => (
+              <li key={device.id} className="device-item">
+                <div className="device-copy">
+                  <div className="session-title-row">
+                    <strong>{device.label || "This device"}</strong>
+                    {device.current_session && <span className="session-badge">Current Session</span>}
+                    <span className={`session-badge ${device.state === "revoked" ? "device-badge-revoked" : ""}`}>
+                      {device.state}
+                    </span>
+                  </div>
+                  <span>Algorithm: {device.algorithm}</span>
+                  <span>Active prekeys: {device.prekey_count}</span>
+                  <span className="device-key-preview">Identity key: {formatKeyPreview(device.identity_key)}</span>
+                  <span className="device-key-preview">Signed prekey: #{device.signed_prekey_id} {formatKeyPreview(device.signed_prekey)}</span>
+                  <time dateTime={device.rotated_at || device.created_at}>
+                    Last rotated {new Date(device.rotated_at || device.created_at).toLocaleString()}
+                  </time>
+                  {device.revoked_at && (
+                    <time dateTime={device.revoked_at}>
+                      Revoked {new Date(device.revoked_at).toLocaleString()}
+                    </time>
+                  )}
+                </div>
+                <div className="device-actions">
+                  {device.state !== "revoked" && (
+                    <form className="device-prekeys-form" onSubmit={(event) => handlePublishPrekeys(event, device.id)}>
+                      <label htmlFor={`publish-prekeys-${device.id}`}>Publish More Prekeys</label>
+                      <textarea
+                        id={`publish-prekeys-${device.id}`}
+                        rows="3"
+                        value={publishInputs[device.id] || ""}
+                        onChange={(event) => handlePublishInputChange(device.id, event.target.value)}
+                        placeholder={"One per line as id:key\n101:base64-public-key"}
+                        disabled={publishingDeviceID === device.id}
+                      />
+                      <button type="submit" className="secondary-button" disabled={publishingDeviceID === device.id}>
+                        {publishingDeviceID === device.id ? "Publishing..." : "Publish Prekeys"}
+                      </button>
+                    </form>
+                  )}
+                  {device.state !== "revoked" && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => handleRevokeDevice(device.id)}
+                      disabled={revokingDeviceID === device.id}
+                    >
+                      {revokingDeviceID === device.id ? "Revoking..." : "Revoke Device"}
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {deviceStatus.message && (
+          <p className={`money-status ${deviceStatus.type === "error" ? "is-error" : "is-success"}`}>
+            {deviceStatus.message}
           </p>
         )}
       </div>

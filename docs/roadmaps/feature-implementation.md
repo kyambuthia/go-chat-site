@@ -14,6 +14,7 @@ Implemented today:
 - rotating refresh tokens, replay-triggered session revocation, and per-device session listing/revocation
 - per-IP/per-user auth quotas, login lockout/backoff, and structured auth/rate-limit logging
 - JWT-authenticated HTTP and WebSocket sessions
+- device identity registration, directory, rotation/revocation, and manual account UI management
 - contacts and invite workflows
 - centralized 1:1 WebSocket relay
 - durable message persistence on the backend, plus inbox/outbox/read/delivered APIs

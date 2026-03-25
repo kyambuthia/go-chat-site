@@ -17,6 +17,14 @@ Authentication and profile:
 - `GET /api/me`
 - `PATCH /api/me`
 
+Device identity:
+- `GET /api/devices`
+- `POST /api/devices`
+- `DELETE /api/devices`
+- `POST /api/devices/rotate`
+- `GET /api/devices/directory`
+- `POST /api/messaging/prekeys`
+
 Contacts and invites:
 - `GET /api/contacts`
 - `GET /api/invites`
@@ -102,6 +110,13 @@ Session management behavior:
 - Login uses per-IP and per-user quotas plus a lockout/backoff table
 - Refresh uses per-IP quotas to bound refresh-token abuse and replay probing
 - WS origin checks use `WS_ALLOWED_ORIGINS` with localhost-safe defaults
+
+## Current Device Identity Contract
+- `POST /api/devices` registers a device identity with `label`, `algorithm`, `identity_key`, `signed_prekey_id`, `signed_prekey`, `signed_prekey_signature`, and `prekeys`
+- `GET /api/devices` returns the caller's registered devices with `state`, `prekey_count`, and `current_session`
+- `POST /api/messaging/prekeys` accepts `{ "device_id": <id>, "prekeys": [{ "prekey_id": <id>, "public_key": "..." }] }`
+- `DELETE /api/devices` accepts `{ "device_id": <id> }` and revokes the matching device identity plus its active prekeys
+- `GET /api/devices/directory?username=<name>` resolves active device bundles for that user
 
 ## Future Versioning Strategy
 Short-term:

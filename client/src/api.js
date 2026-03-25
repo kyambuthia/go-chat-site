@@ -308,6 +308,26 @@ export const revokeSession = (sessionID) =>
     body: JSON.stringify({ session_id: sessionID }),
   });
 
+export const getDevices = () => apiRequest("/api/devices");
+
+export const registerDeviceIdentity = (payload) =>
+  apiRequest("/api/devices", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const publishDevicePrekeys = (deviceID, prekeys) =>
+  apiRequest("/api/messaging/prekeys", {
+    method: "POST",
+    body: JSON.stringify({ device_id: deviceID, prekeys }),
+  });
+
+export const revokeDeviceIdentity = (deviceID) =>
+  apiRequest("/api/devices", {
+    method: "DELETE",
+    body: JSON.stringify({ device_id: deviceID }),
+  });
+
 export const getContacts = () => apiRequest("/api/contacts");
 
 export const addContact = (username) =>
