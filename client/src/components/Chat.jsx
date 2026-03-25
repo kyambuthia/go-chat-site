@@ -681,38 +681,162 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const [error, setError] = useState(null);
   const syncCursorRef = useRef(0);
   const appliedSyncTokenRef = useRef(0);
+  const contactsHydratedRef = useRef(false);
+  const summaryBootstrapAttemptsRef = useRef(new Set());
+  const selectedContactRef = useRef(selectedContact);
 
   const selectedUsername = selectedContact?.username;
   const messages = selectedUsername ? (threads[selectedUsername] || []) : [];
 
   useEffect(() => {
+    selectedContactRef.current = selectedContact;
+  }, [selectedContact]);
+
+  useEffect(() => {
     const fetchContacts = async () => {
       try {
-        setLoading(true);
+        if (!contactsHydratedRef.current) {
+          setLoading(true);
+        }
         setError(null);
-        const [contactsResponse, threadSummariesResponse] = await Promise.all([
-          getContacts(),
-          getMessageThreads({ limit: 200 }),
-        ]);
+        const contactsResponse = await getContacts();
         const nextContacts = contactsResponse || [];
-        const nextThreadSummaries = threadSummariesResponse || [];
 
         setContacts(nextContacts);
-        setThreadSummaries(buildThreadSummariesByUsername(nextThreadSummaries));
-        setUnreadByUser(buildUnreadByUserFromThreadSummaries(nextThreadSummaries));
-        syncCursorRef.current = getMaxThreadSummaryMessageID(nextThreadSummaries);
+        if (selectedContactRef.current) {
+          const refreshedSelectedContact = nextContacts.find((contact) => contact.username === selectedContactRef.current.username);
+          if (refreshedSelectedContact) {
+            setSelectedContact(refreshedSelectedContact);
+          }
+        }
+
+        if (!contactsHydratedRef.current) {
+          const threadSummariesResponse = await getMessageThreads({ limit: 200 });
+          const nextThreadSummaries = threadSummariesResponse || [];
+
+          setThreadSummaries(buildThreadSummariesByUsername(nextThreadSummaries));
+          setUnreadByUser(buildUnreadByUserFromThreadSummaries(nextThreadSummaries));
+          syncCursorRef.current = getMaxThreadSummaryMessageID(nextThreadSummaries);
+        }
+        contactsHydratedRef.current = true;
       } catch (err) {
         console.error("Failed to fetch contacts:", err);
         setError(err.message);
-        setContacts([]);
-        setThreadSummaries({});
-        setUnreadByUser({});
+        if (!contactsHydratedRef.current) {
+          setContacts([]);
+          setThreadSummaries({});
+          setUnreadByUser({});
+        }
       } finally {
         setLoading(false);
       }
     };
     fetchContacts();
-  }, []);
+  }, [setSelectedContact, syncToken]);
+
+  useEffect(() => {
+    if (loading || contacts.length === 0) {
+      return;
+    }
+
+    const candidateContacts = contacts.filter((contact) =>
+      !threadSummaries[contact.username] && !summaryBootstrapAttemptsRef.current.has(contact.username),
+    );
+    if (candidateContacts.length === 0) {
+      return;
+    }
+
+    candidateContacts.forEach((contact) => {
+      summaryBootstrapAttemptsRef.current.add(contact.username);
+    });
+
+    let cancelled = false;
+
+    const bootstrapMissingSummaries = async () => {
+      const localSummaryUpdates = {};
+      const localUnreadUpdates = {};
+      const remoteCandidates = [];
+
+      candidateContacts.forEach((contact) => {
+        const existingThread = threads[contact.username] || [];
+        if (existingThread.length > 0) {
+          const unreadCount = existingThread.filter((message) => !message.sent && !message.read && messageAffectsThreadSummary(message)).length;
+          const nextSummary = upsertLocalThreadSummary(null, contact, existingThread, unreadCount);
+          if (nextSummary) {
+            localSummaryUpdates[contact.username] = nextSummary;
+            localUnreadUpdates[contact.username] = unreadCount;
+          }
+        } else {
+          remoteCandidates.push(contact);
+        }
+      });
+
+      if (!cancelled && Object.keys(localSummaryUpdates).length > 0) {
+        setThreadSummaries((prev) => ({ ...prev, ...localSummaryUpdates }));
+        setUnreadByUser((prev) => ({ ...prev, ...localUnreadUpdates }));
+      }
+
+      if (remoteCandidates.length === 0) {
+        return;
+      }
+
+      try {
+        const outboxMessages = await getOutbox({ limit: 500 });
+        const bootstrappedThreads = await Promise.all(remoteCandidates.map(async (contact) => {
+          const inboxMessages = await getInbox({ withUserID: contact.id, limit: 100 });
+          return {
+            contact,
+            thread: buildThreadHistory(contact, inboxMessages || [], outboxMessages || []),
+          };
+        }));
+
+        if (cancelled) {
+          return;
+        }
+
+        const nextThreads = {};
+        const nextSummaries = {};
+        const nextUnreadByUser = {};
+
+        bootstrappedThreads.forEach(({ contact, thread }) => {
+          if (thread.length === 0) {
+            return;
+          }
+
+          nextThreads[contact.username] = thread;
+          const unreadCount = thread.filter((message) => !message.sent && !message.read && messageAffectsThreadSummary(message)).length;
+          const nextSummary = upsertLocalThreadSummary(null, contact, thread, unreadCount);
+          if (!nextSummary) {
+            return;
+          }
+          nextSummaries[contact.username] = nextSummary;
+          nextUnreadByUser[contact.username] = unreadCount;
+          syncCursorRef.current = Math.max(syncCursorRef.current, Number(nextSummary.last_message?.id || 0));
+        });
+
+        if (Object.keys(nextThreads).length > 0) {
+          setThreads((prev) => ({ ...prev, ...nextThreads }));
+        }
+        if (Object.keys(nextSummaries).length > 0) {
+          setThreadSummaries((prev) => ({ ...prev, ...nextSummaries }));
+          setUnreadByUser((prev) => ({ ...prev, ...nextUnreadByUser }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          remoteCandidates.forEach((contact) => {
+            summaryBootstrapAttemptsRef.current.delete(contact.username);
+          });
+          console.error("Failed to bootstrap missing thread summaries:", err);
+        }
+      }
+    };
+
+    void bootstrapMissingSummaries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contacts, loading, threadSummaries, threads]);
 
   useEffect(() => {
     if (!syncToken || loading || appliedSyncTokenRef.current === syncToken) {
