@@ -22,6 +22,7 @@ func newAuthSecurityForTest(t *testing.T, perIPLimit int, perUserLimit int, thre
 		db:               s.DB,
 		perIPLimiter:     newFixedWindowRateLimiter(perIPLimit, time.Minute),
 		perUserLimiter:   newFixedWindowRateLimiter(perUserLimit, time.Minute),
+		refreshIPLimiter: newFixedWindowRateLimiter(100, time.Minute),
 		lockoutThreshold: threshold,
 		lockoutWindow:    time.Hour,
 		lockoutDuration:  time.Hour,
@@ -108,6 +109,30 @@ func TestAuthSecurity_EnforcesPerIPRateLimit(t *testing.T) {
 	}
 	if limited.Scope != "ip" {
 		t.Fatalf("rate limit scope = %q, want ip", limited.Scope)
+	}
+	if limited.RetryAfter <= 0 {
+		t.Fatalf("retry_after = %s, want > 0", limited.RetryAfter)
+	}
+}
+
+func TestAuthSecurity_EnforcesRefreshPerIPRateLimit(t *testing.T) {
+	security := newAuthSecurityForTest(t, 100, 100, 10)
+	security.refreshIPLimiter = newFixedWindowRateLimiter(1, time.Minute)
+	ctx := context.Background()
+
+	if err := security.allowRefresh(ctx, "127.0.0.1", "req-1"); err != nil {
+		t.Fatalf("first allowRefresh error = %v", err)
+	}
+	err := security.allowRefresh(ctx, "127.0.0.1", "req-2")
+	if !errors.Is(err, errAuthRateLimited) {
+		t.Fatalf("second allowRefresh error = %v, want %v", err, errAuthRateLimited)
+	}
+	var limited rateLimitedError
+	if !errors.As(err, &limited) {
+		t.Fatalf("second allowRefresh error = %v, want rateLimitedError", err)
+	}
+	if limited.Scope != "refresh_ip" {
+		t.Fatalf("rate limit scope = %q, want refresh_ip", limited.Scope)
 	}
 	if limited.RetryAfter <= 0 {
 		t.Fatalf("retry_after = %s, want > 0", limited.RetryAfter)

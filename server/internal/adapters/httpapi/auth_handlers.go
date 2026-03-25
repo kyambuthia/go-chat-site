@@ -138,11 +138,19 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requestID := r.Header.Get("X-Request-ID")
+	ip := clientIP(r)
+	if h.Security != nil {
+		if err := h.Security.allowRefresh(r.Context(), ip, requestID); err != nil {
+			writeAuthThrottleError(w, err)
+			return
+		}
+	}
+
 	tokens, err := h.Sessions.RefreshSession(r.Context(), strings.TrimSpace(req.RefreshToken), sessionMetadataFromRequest(r, req.DeviceLabel))
 	if err != nil {
 		auth.LogSecurityEvent("auth_refresh_failed", map[string]any{
 			"request_id": requestID,
-			"ip_address": clientIP(r),
+			"ip_address": ip,
 			"reason":     err.Error(),
 		})
 		status := http.StatusUnauthorized
@@ -156,7 +164,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		"request_id": requestID,
 		"user_id":    int(tokens.Session.UserID),
 		"session_id": tokens.Session.ID,
-		"ip_address": clientIP(r),
+		"ip_address": ip,
 	})
 
 	writeSessionTokensJSON(w, tokens)

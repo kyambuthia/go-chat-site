@@ -90,6 +90,7 @@ Current `session` payload fields:
 
 Session management behavior:
 - `POST /api/auth/refresh` accepts `{ "refresh_token": "...", "device_label": "..." }`
+- throttled `POST /api/login` and `POST /api/auth/refresh` responses return HTTP `429`, `Retry-After`, and JSON `retry_after_seconds`; login lockouts additionally include `locked_until`
 - `POST /api/logout` revokes the current authenticated session
 - `GET /api/sessions` returns the caller's active sessions and marks the current one with `current: true`
 - `DELETE /api/sessions` accepts `{ "session_id": <id> }` and revokes that session if it belongs to the caller
@@ -99,6 +100,7 @@ Session management behavior:
 - Access tokens are validated against session state when a `session_id` claim is present
 - Refresh tokens are opaque, rotated on refresh, and replay-protected
 - Login uses per-IP and per-user quotas plus a lockout/backoff table
+- Refresh uses per-IP quotas to bound refresh-token abuse and replay probing
 - WS origin checks use `WS_ALLOWED_ORIGINS` with localhost-safe defaults
 
 ## Future Versioning Strategy

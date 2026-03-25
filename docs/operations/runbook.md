@@ -37,6 +37,7 @@ Actions:
 1. Inspect logs by `path=/api/login` and status `429`.
 2. Tune env vars:
 - `LOGIN_RATE_LIMIT_PER_MINUTE`
+- `REFRESH_RATE_LIMIT_PER_MINUTE`
 - `WS_HANDSHAKE_RATE_LIMIT_PER_MINUTE`
 
 3. Restart service with adjusted values.

@@ -224,6 +224,101 @@ func TestAuthHandlers(t *testing.T) {
 		}
 	})
 
+	t.Run("TestAuthSessions_RefreshRateLimitReturnsRetryAfter", func(t *testing.T) {
+		t.Setenv("REFRESH_RATE_LIMIT_PER_MINUTE", "1")
+
+		s2, err := store.NewSqliteStore(":memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s2.DB.Close()
+		if err := migrate.RunMigrations(s2.DB, "../../migrations"); err != nil {
+			t.Fatal(err)
+		}
+
+		hub2 := wsrelay.NewHub()
+		go hub2.Run()
+		defer hub2.Shutdown()
+
+		a2 := NewAPI(s2, hub2)
+
+		registerReqBody, _ := json.Marshal(map[string]string{
+			"username": "ratelimit-user",
+			"password": "password123",
+		})
+		registerReq := httptest.NewRequest(http.MethodPost, "/api/register", bytes.NewBuffer(registerReqBody))
+		registerReq.Header.Set("Content-Type", "application/json")
+		registerRR := httptest.NewRecorder()
+		a2.ServeHTTP(registerRR, registerReq)
+		if registerRR.Code != http.StatusCreated {
+			t.Fatalf("register status = %d, want %d; body=%s", registerRR.Code, http.StatusCreated, registerRR.Body.String())
+		}
+
+		type authResponse struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+
+		loginReqBody, _ := json.Marshal(map[string]string{
+			"username": "ratelimit-user",
+			"password": "password123",
+		})
+		loginReq := httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewBuffer(loginReqBody))
+		loginReq.Header.Set("Content-Type", "application/json")
+		loginRR := httptest.NewRecorder()
+		a2.ServeHTTP(loginRR, loginReq)
+		if loginRR.Code != http.StatusOK {
+			t.Fatalf("login status = %d, want %d; body=%s", loginRR.Code, http.StatusOK, loginRR.Body.String())
+		}
+
+		var loginResp authResponse
+		if err := json.Unmarshal(loginRR.Body.Bytes(), &loginResp); err != nil {
+			t.Fatalf("unmarshal login response: %v", err)
+		}
+
+		refreshReqBody, _ := json.Marshal(map[string]string{
+			"refresh_token": loginResp.RefreshToken,
+		})
+		refreshReq := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", bytes.NewBuffer(refreshReqBody))
+		refreshReq.Header.Set("Content-Type", "application/json")
+		refreshReq.RemoteAddr = "10.0.0.7:4321"
+		refreshRR := httptest.NewRecorder()
+		a2.ServeHTTP(refreshRR, refreshReq)
+		if refreshRR.Code != http.StatusOK {
+			t.Fatalf("first refresh status = %d, want %d; body=%s", refreshRR.Code, http.StatusOK, refreshRR.Body.String())
+		}
+
+		var refreshResp authResponse
+		if err := json.Unmarshal(refreshRR.Body.Bytes(), &refreshResp); err != nil {
+			t.Fatalf("unmarshal refresh response: %v", err)
+		}
+
+		secondRefreshReqBody, _ := json.Marshal(map[string]string{
+			"refresh_token": refreshResp.RefreshToken,
+		})
+		secondRefreshReq := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", bytes.NewBuffer(secondRefreshReqBody))
+		secondRefreshReq.Header.Set("Content-Type", "application/json")
+		secondRefreshReq.RemoteAddr = "10.0.0.7:4321"
+		secondRefreshRR := httptest.NewRecorder()
+		a2.ServeHTTP(secondRefreshRR, secondRefreshReq)
+		if secondRefreshRR.Code != http.StatusTooManyRequests {
+			t.Fatalf("second refresh status = %d, want %d; body=%s", secondRefreshRR.Code, http.StatusTooManyRequests, secondRefreshRR.Body.String())
+		}
+		if secondRefreshRR.Header().Get("Retry-After") == "" {
+			t.Fatal("expected Retry-After header")
+		}
+
+		var throttleResp map[string]any
+		if err := json.Unmarshal(secondRefreshRR.Body.Bytes(), &throttleResp); err != nil {
+			t.Fatalf("unmarshal throttled response: %v", err)
+		}
+		if got := throttleResp["scope"].(string); got != "refresh_ip" {
+			t.Fatalf("scope = %q, want refresh_ip", got)
+		}
+		if got := int(throttleResp["retry_after_seconds"].(float64)); got < 1 {
+			t.Fatalf("retry_after_seconds = %d, want >= 1", got)
+		}
+	})
+
 	t.Run("TestAuthSessions_ListRevokeAndLogout", func(t *testing.T) {
 		type sessionPayload struct {
 			ID      int64  `json:"id"`

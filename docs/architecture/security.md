@@ -8,6 +8,7 @@ Implemented in current codebase:
 - Structured JSON HTTP request logs with request IDs
 - WS origin allowlist (env-driven, localhost-safe defaults)
 - Per-IP and per-user login quotas backed by shared SQLite windows
+- Per-IP refresh quotas for session rotation
 - Login lockout/backoff after repeated password failures
 - Structured auth/rate-limit event logging for login, refresh, revocation, and quota violations
 - Session-backed JWT access tokens plus rotating refresh tokens
@@ -65,6 +66,7 @@ Implemented in current codebase:
 - `WS_ALLOWED_ORIGINS` (optional; comma-separated)
 - `LOGIN_RATE_LIMIT_PER_MINUTE` (optional; default `60`)
 - `LOGIN_USER_RATE_LIMIT_PER_MINUTE` (optional; default `20`)
+- `REFRESH_RATE_LIMIT_PER_MINUTE` (optional; default `60`)
 - `WS_HANDSHAKE_RATE_LIMIT_PER_MINUTE` (optional; default `120`)
 - `ACCESS_TOKEN_TTL_MINUTES` (optional; default `15`)
 - `REFRESH_TOKEN_TTL_HOURS` (optional; default `720`)

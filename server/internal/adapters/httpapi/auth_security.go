@@ -39,6 +39,7 @@ type authSecurity struct {
 	db               *sql.DB
 	perIPLimiter     requestRateLimiter
 	perUserLimiter   requestRateLimiter
+	refreshIPLimiter requestRateLimiter
 	lockoutThreshold int
 	lockoutWindow    time.Duration
 	lockoutDuration  time.Duration
@@ -57,10 +58,15 @@ func newAuthSecurity(db *sql.DB) (*authSecurity, error) {
 	if err != nil {
 		return nil, err
 	}
+	refreshIPLimiter, err := newSharedWindowRateLimiter(db, config.RefreshRateLimitPerMinute(), time.Minute)
+	if err != nil {
+		return nil, err
+	}
 	security := &authSecurity{
 		db:               db,
 		perIPLimiter:     perIPLimiter,
 		perUserLimiter:   perUserLimiter,
+		refreshIPLimiter: refreshIPLimiter,
 		lockoutThreshold: config.LoginLockoutThreshold(),
 		lockoutWindow:    config.LoginLockoutWindow(),
 		lockoutDuration:  config.LoginLockoutDuration(),
@@ -132,6 +138,24 @@ func (s *authSecurity) allowLogin(ctx context.Context, username string, ip strin
 		return loginLockedError{Until: lockedUntil}
 	}
 	return nil
+}
+
+func (s *authSecurity) allowRefresh(ctx context.Context, ip string, requestID string) error {
+	_ = ctx
+	if s == nil || s.refreshIPLimiter == nil {
+		return nil
+	}
+	decision := s.refreshIPLimiter.allow("auth-refresh:ip:" + ip)
+	if decision.Allowed {
+		return nil
+	}
+	auth.LogSecurityEvent("auth_rate_limit_exceeded", map[string]any{
+		"request_id":          requestID,
+		"scope":               "refresh_ip",
+		"ip_address":          ip,
+		"retry_after_seconds": retryAfterSeconds(decision.RetryAfter),
+	})
+	return rateLimitedError{Scope: "refresh_ip", RetryAfter: decision.RetryAfter}
 }
 
 func (s *authSecurity) recordLoginFailure(ctx context.Context, username string, ip string, requestID string) {

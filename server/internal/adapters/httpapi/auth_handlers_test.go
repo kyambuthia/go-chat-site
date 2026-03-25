@@ -34,8 +34,46 @@ func (f *fakeAuthService) LoginPassword(ctx context.Context, cred coreid.Passwor
 	return f.loginResp, f.loginErr
 }
 
+type fakeSessionService struct {
+	refreshResp  coreid.SessionTokens
+	refreshErr   error
+	refreshCalls int
+	lastToken    string
+	lastMeta     coreid.SessionMetadata
+}
+
+func (f *fakeSessionService) RefreshSession(ctx context.Context, refreshToken string, meta coreid.SessionMetadata) (coreid.SessionTokens, error) {
+	_ = ctx
+	f.refreshCalls++
+	f.lastToken = refreshToken
+	f.lastMeta = meta
+	return f.refreshResp, f.refreshErr
+}
+
+func (f *fakeSessionService) ListSessions(ctx context.Context, userID coreid.UserID) ([]coreid.Session, error) {
+	_ = ctx
+	_ = userID
+	return nil, nil
+}
+
+func (f *fakeSessionService) RevokeSession(ctx context.Context, actorUserID coreid.UserID, sessionID int64) error {
+	_ = ctx
+	_ = actorUserID
+	_ = sessionID
+	return nil
+}
+
 func loginReq(body string) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Request-ID", "req-1")
+	req.RemoteAddr = "127.0.0.1:3456"
+	req.Header.Set("User-Agent", "auth-handler-test")
+	return req
+}
+
+func refreshReq(body string) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-ID", "req-1")
 	req.RemoteAddr = "127.0.0.1:3456"
@@ -126,5 +164,59 @@ func TestAuthHandler_Login_LockoutIncludesRetryAfter(t *testing.T) {
 	}
 	if identity.loginCalls != 0 {
 		t.Fatalf("identity login calls = %d, want 0", identity.loginCalls)
+	}
+}
+
+func TestAuthHandler_Refresh_RateLimitedIncludesRetryAfter(t *testing.T) {
+	security := newAuthSecurityForTest(t, 100, 100, 10)
+	security.refreshIPLimiter = newFixedWindowRateLimiter(1, time.Minute)
+	sessions := &fakeSessionService{refreshResp: coreid.SessionTokens{
+		AccessToken:           "access-token",
+		RefreshToken:          "refresh-token-next",
+		AccessTokenExpiresAt:  time.Now().UTC().Add(15 * time.Minute),
+		RefreshTokenExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		Session: coreid.Session{
+			ID:                    7,
+			UserID:                4,
+			DeviceLabel:           "Browser",
+			UserAgent:             "auth-handler-test",
+			LastSeenIP:            "127.0.0.1",
+			CreatedAt:             time.Now().UTC(),
+			LastSeenAt:            time.Now().UTC(),
+			AccessTokenExpiresAt:  time.Now().UTC().Add(15 * time.Minute),
+			RefreshTokenExpiresAt: time.Now().UTC().Add(24 * time.Hour),
+		},
+	}}
+	h := &AuthHandler{Sessions: sessions, Security: security}
+
+	first := httptest.NewRecorder()
+	h.Refresh(first, refreshReq(`{"refresh_token":"refresh-token"}`))
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want 200 body=%s", first.Code, first.Body.String())
+	}
+
+	second := httptest.NewRecorder()
+	h.Refresh(second, refreshReq(`{"refresh_token":"refresh-token-next"}`))
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want 429 body=%s", second.Code, second.Body.String())
+	}
+	if got := second.Header().Get("Retry-After"); got == "" {
+		t.Fatal("expected Retry-After header")
+	}
+	var resp map[string]any
+	if err := json.Unmarshal(second.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got := resp["error"].(string); got != "rate limit exceeded" {
+		t.Fatalf("error = %q, want rate limit exceeded", got)
+	}
+	if got := resp["scope"].(string); got != "refresh_ip" {
+		t.Fatalf("scope = %q, want refresh_ip", got)
+	}
+	if got := int(resp["retry_after_seconds"].(float64)); got < 1 {
+		t.Fatalf("retry_after_seconds = %d, want >= 1", got)
+	}
+	if sessions.refreshCalls != 1 {
+		t.Fatalf("session refresh calls = %d, want 1", sessions.refreshCalls)
 	}
 }
