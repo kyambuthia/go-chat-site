@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -13,7 +14,12 @@ import (
 )
 
 type requestRateLimiter interface {
-	allow(key string) bool
+	allow(key string) rateLimitDecision
+}
+
+type rateLimitDecision struct {
+	Allowed    bool
+	RetryAfter time.Duration
 }
 
 type fixedWindowRateLimiter struct {
@@ -34,9 +40,9 @@ func newFixedWindowRateLimiter(limit int, window time.Duration) *fixedWindowRate
 	}
 }
 
-func (l *fixedWindowRateLimiter) allow(key string) bool {
+func (l *fixedWindowRateLimiter) allow(key string) rateLimitDecision {
 	if l.limit <= 0 {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 	now := time.Now()
 
@@ -49,7 +55,14 @@ func (l *fixedWindowRateLimiter) allow(key string) bool {
 	}
 
 	l.hits[key]++
-	return l.hits[key] <= l.limit
+	if l.hits[key] <= l.limit {
+		return rateLimitDecision{Allowed: true}
+	}
+	retryAfter := time.Until(l.until)
+	if retryAfter < 0 {
+		retryAfter = 0
+	}
+	return rateLimitDecision{Allowed: false, RetryAfter: retryAfter}
 }
 
 type sharedWindowRateLimiter struct {
@@ -85,9 +98,9 @@ func (l *sharedWindowRateLimiter) init(ctx context.Context) error {
 	return err
 }
 
-func (l *sharedWindowRateLimiter) allow(key string) bool {
+func (l *sharedWindowRateLimiter) allow(key string) rateLimitDecision {
 	if l.limit <= 0 {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 	now := time.Now().Unix()
 	windowSeconds := int64(l.window / time.Second)
@@ -98,7 +111,7 @@ func (l *sharedWindowRateLimiter) allow(key string) bool {
 
 	tx, err := l.db.BeginTx(context.Background(), nil)
 	if err != nil {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 	defer tx.Rollback()
 
@@ -108,7 +121,7 @@ func (l *sharedWindowRateLimiter) allow(key string) bool {
 		windowStart,
 		now,
 	); err != nil {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 
 	if _, err := tx.Exec(
@@ -117,7 +130,7 @@ func (l *sharedWindowRateLimiter) allow(key string) bool {
 		key,
 		windowStart,
 	); err != nil {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 
 	var hits int
@@ -126,11 +139,11 @@ func (l *sharedWindowRateLimiter) allow(key string) bool {
 		key,
 		windowStart,
 	).Scan(&hits); err != nil {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return true
+		return rateLimitDecision{Allowed: true}
 	}
 
 	// Probabilistic cleanup to bound growth while keeping hot path cheap.
@@ -138,22 +151,50 @@ func (l *sharedWindowRateLimiter) allow(key string) bool {
 		cutoff := windowStart - (windowSeconds * 2)
 		_, _ = l.db.Exec(`DELETE FROM rate_limit_windows WHERE window_start_unix < ?`, cutoff)
 	}
-	return hits <= l.limit
+	if hits <= l.limit {
+		return rateLimitDecision{Allowed: true}
+	}
+	retryAfter := time.Until(time.Unix(windowStart+windowSeconds, 0))
+	if retryAfter < 0 {
+		retryAfter = 0
+	}
+	return rateLimitDecision{Allowed: false, RetryAfter: retryAfter}
 }
 
 func rateLimitMiddleware(limiter requestRateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if limiter == nil || limiter.allow(clientIP(r)) {
+			decision := rateLimitDecision{Allowed: true}
+			if limiter != nil {
+				decision = limiter.allow(clientIP(r))
+			}
+			if decision.Allowed {
 				next.ServeHTTP(w, r)
 				return
 			}
 
+			if retryAfterSeconds := retryAfterSeconds(decision.RetryAfter); retryAfterSeconds > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusTooManyRequests)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "rate limit exceeded"})
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":               "rate limit exceeded",
+				"retry_after_seconds": retryAfterSeconds(decision.RetryAfter),
+			})
 		})
 	}
+}
+
+func retryAfterSeconds(d time.Duration) int {
+	if d <= 0 {
+		return 0
+	}
+	seconds := int((d + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
 }
 
 func clientIP(r *http.Request) string {

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kyambuthia/go-chat-site/server/internal/auth"
 	coreid "github.com/kyambuthia/go-chat-site/server/internal/core/identity"
@@ -89,8 +91,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	requestID := r.Header.Get("X-Request-ID")
 	if h.Security != nil {
 		if err := h.Security.allowLogin(r.Context(), username, ip, requestID); err != nil {
-			status := http.StatusTooManyRequests
-			web.JSONError(w, err, status)
+			writeAuthThrottleError(w, err)
 			return
 		}
 	}
@@ -311,6 +312,42 @@ func writeSessionTokensJSON(w http.ResponseWriter, tokens coreid.SessionTokens) 
 			"refresh_token_expires_at": tokens.Session.RefreshTokenExpiresAt,
 		},
 	})
+}
+
+func writeAuthThrottleError(w http.ResponseWriter, err error) {
+	var locked loginLockedError
+	if errors.As(err, &locked) {
+		retryAfter := retryAfterSeconds(time.Until(locked.Until))
+		if retryAfter > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":               err.Error(),
+			"locked_until":        locked.Until.UTC().Format(time.RFC3339),
+			"retry_after_seconds": retryAfter,
+		})
+		return
+	}
+
+	var limited rateLimitedError
+	if errors.As(err, &limited) {
+		retryAfter := retryAfterSeconds(limited.RetryAfter)
+		if retryAfter > 0 {
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":               errAuthRateLimited.Error(),
+			"scope":               limited.Scope,
+			"retry_after_seconds": retryAfter,
+		})
+		return
+	}
+
+	web.JSONError(w, err, http.StatusTooManyRequests)
 }
 
 func sessionMetadataFromRequest(r *http.Request, deviceLabel string) coreid.SessionMetadata {

@@ -75,7 +75,41 @@ func TestAuthSecurity_EnforcesPerUserRateLimit(t *testing.T) {
 	if err := security.allowLogin(ctx, "alice", "127.0.0.1", "req-1"); err != nil {
 		t.Fatalf("first allowLogin error = %v", err)
 	}
-	if err := security.allowLogin(ctx, "alice", "127.0.0.1", "req-2"); !errors.Is(err, errAuthRateLimited) {
+	err := security.allowLogin(ctx, "alice", "127.0.0.1", "req-2")
+	if !errors.Is(err, errAuthRateLimited) {
 		t.Fatalf("second allowLogin error = %v, want %v", err, errAuthRateLimited)
+	}
+	var limited rateLimitedError
+	if !errors.As(err, &limited) {
+		t.Fatalf("second allowLogin error = %v, want rateLimitedError", err)
+	}
+	if limited.Scope != "user" {
+		t.Fatalf("rate limit scope = %q, want user", limited.Scope)
+	}
+	if limited.RetryAfter <= 0 {
+		t.Fatalf("retry_after = %s, want > 0", limited.RetryAfter)
+	}
+}
+
+func TestAuthSecurity_EnforcesPerIPRateLimit(t *testing.T) {
+	security := newAuthSecurityForTest(t, 1, 100, 10)
+	ctx := context.Background()
+
+	if err := security.allowLogin(ctx, "alice", "127.0.0.1", "req-1"); err != nil {
+		t.Fatalf("first allowLogin error = %v", err)
+	}
+	err := security.allowLogin(ctx, "bob", "127.0.0.1", "req-2")
+	if !errors.Is(err, errAuthRateLimited) {
+		t.Fatalf("second allowLogin error = %v, want %v", err, errAuthRateLimited)
+	}
+	var limited rateLimitedError
+	if !errors.As(err, &limited) {
+		t.Fatalf("second allowLogin error = %v, want rateLimitedError", err)
+	}
+	if limited.Scope != "ip" {
+		t.Fatalf("rate limit scope = %q, want ip", limited.Scope)
+	}
+	if limited.RetryAfter <= 0 {
+		t.Fatalf("retry_after = %s, want > 0", limited.RetryAfter)
 	}
 }

@@ -18,8 +18,21 @@ type loginLockedError struct {
 	Until time.Time
 }
 
+type rateLimitedError struct {
+	Scope      string
+	RetryAfter time.Duration
+}
+
 func (e loginLockedError) Error() string {
 	return fmt.Sprintf("too many failed login attempts; try again after %s", e.Until.UTC().Format(time.RFC3339))
+}
+
+func (e rateLimitedError) Error() string {
+	return errAuthRateLimited.Error()
+}
+
+func (e rateLimitedError) Is(target error) bool {
+	return target == errAuthRateLimited
 }
 
 type authSecurity struct {
@@ -79,22 +92,30 @@ func (s *authSecurity) allowLogin(ctx context.Context, username string, ip strin
 		return nil
 	}
 	normalizedUsername := normalizeThrottleUsername(username)
-	if s.perIPLimiter != nil && !s.perIPLimiter.allow("auth-login:ip:"+ip) {
-		auth.LogSecurityEvent("auth_rate_limit_exceeded", map[string]any{
-			"request_id": requestID,
-			"scope":      "ip",
-			"ip_address": ip,
-		})
-		return errAuthRateLimited
+	if s.perIPLimiter != nil {
+		decision := s.perIPLimiter.allow("auth-login:ip:" + ip)
+		if !decision.Allowed {
+			auth.LogSecurityEvent("auth_rate_limit_exceeded", map[string]any{
+				"request_id":          requestID,
+				"scope":               "ip",
+				"ip_address":          ip,
+				"retry_after_seconds": retryAfterSeconds(decision.RetryAfter),
+			})
+			return rateLimitedError{Scope: "ip", RetryAfter: decision.RetryAfter}
+		}
 	}
-	if normalizedUsername != "" && s.perUserLimiter != nil && !s.perUserLimiter.allow("auth-login:user:"+normalizedUsername) {
-		auth.LogSecurityEvent("auth_rate_limit_exceeded", map[string]any{
-			"request_id": requestID,
-			"scope":      "user",
-			"username":   normalizedUsername,
-			"ip_address": ip,
-		})
-		return errAuthRateLimited
+	if normalizedUsername != "" && s.perUserLimiter != nil {
+		decision := s.perUserLimiter.allow("auth-login:user:" + normalizedUsername)
+		if !decision.Allowed {
+			auth.LogSecurityEvent("auth_rate_limit_exceeded", map[string]any{
+				"request_id":          requestID,
+				"scope":               "user",
+				"username":            normalizedUsername,
+				"ip_address":          ip,
+				"retry_after_seconds": retryAfterSeconds(decision.RetryAfter),
+			})
+			return rateLimitedError{Scope: "user", RetryAfter: decision.RetryAfter}
+		}
 	}
 
 	lockedUntil, err := s.lockedUntil(ctx, "user:"+normalizedUsername)

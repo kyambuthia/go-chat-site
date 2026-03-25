@@ -21,6 +21,7 @@ Implemented in current codebase:
   - per-IP and per-user login quotas
   - structured auth event logging
   - lockout/backoff policy: 5 failed logins in 15 minutes triggers a 15-minute cool-down
+  - login throttle and lockout responses return HTTP `429`, `Retry-After`, and JSON retry metadata for clients/operators
 - Remaining next steps:
   - operator-visible auth event dashboards/alerting
   - CAPTCHA or other challenge flow if the beta threat model requires it

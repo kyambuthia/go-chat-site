@@ -14,19 +14,23 @@ import (
 func TestFixedWindowRateLimiter_AllowAndWindowReset(t *testing.T) {
 	limiter := newFixedWindowRateLimiter(2, 15*time.Millisecond)
 
-	if !limiter.allow("1.2.3.4") {
+	if !limiter.allow("1.2.3.4").Allowed {
 		t.Fatal("first request should pass")
 	}
-	if !limiter.allow("1.2.3.4") {
+	if !limiter.allow("1.2.3.4").Allowed {
 		t.Fatal("second request should pass")
 	}
-	if limiter.allow("1.2.3.4") {
+	decision := limiter.allow("1.2.3.4")
+	if decision.Allowed {
 		t.Fatal("third request should be rate limited")
+	}
+	if decision.RetryAfter <= 0 {
+		t.Fatal("expected retry_after on rate-limited decision")
 	}
 
 	time.Sleep(20 * time.Millisecond)
 
-	if !limiter.allow("1.2.3.4") {
+	if !limiter.allow("1.2.3.4").Allowed {
 		t.Fatal("request after window reset should pass")
 	}
 }
@@ -56,16 +60,22 @@ func TestRateLimitMiddleware_ReturnsJSON429(t *testing.T) {
 	if rr2.Code != http.StatusTooManyRequests {
 		t.Fatalf("second status = %d, want 429", rr2.Code)
 	}
+	if rr2.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
+	}
 	if got := rr2.Header().Get("Content-Type"); got != "application/json" {
 		t.Fatalf("content type = %q, want application/json", got)
 	}
 
-	var body map[string]string
+	var body map[string]any
 	if err := json.Unmarshal(rr2.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
 	if body["error"] != "rate limit exceeded" {
 		t.Fatalf("error body = %q, want rate limit exceeded", body["error"])
+	}
+	if got := int(body["retry_after_seconds"].(float64)); got < 1 {
+		t.Fatalf("retry_after_seconds = %d, want >= 1", got)
 	}
 	if called != 1 {
 		t.Fatalf("next handler call count = %d, want 1", called)
@@ -118,13 +128,13 @@ func TestSharedWindowRateLimiter_SharedAcrossInstances(t *testing.T) {
 		t.Fatalf("new shared limiter l2: %v", err)
 	}
 
-	if !l1.allow("198.51.100.1") {
+	if !l1.allow("198.51.100.1").Allowed {
 		t.Fatal("first request should pass")
 	}
-	if !l2.allow("198.51.100.1") {
+	if !l2.allow("198.51.100.1").Allowed {
 		t.Fatal("second request should pass")
 	}
-	if l1.allow("198.51.100.1") {
+	if l1.allow("198.51.100.1").Allowed {
 		t.Fatal("third request should be rate limited")
 	}
 }
@@ -140,16 +150,16 @@ func TestSharedWindowRateLimiter_ResetsAfterWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new shared limiter: %v", err)
 	}
-	if !limiter.allow("203.0.113.9") {
+	if !limiter.allow("203.0.113.9").Allowed {
 		t.Fatal("first request should pass")
 	}
-	if limiter.allow("203.0.113.9") {
+	if limiter.allow("203.0.113.9").Allowed {
 		t.Fatal("second request in same window should be limited")
 	}
 
 	time.Sleep(1100 * time.Millisecond)
 
-	if !limiter.allow("203.0.113.9") {
+	if !limiter.allow("203.0.113.9").Allowed {
 		t.Fatal("request after window reset should pass")
 	}
 }
