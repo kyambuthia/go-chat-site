@@ -707,6 +707,8 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           const refreshedSelectedContact = nextContacts.find((contact) => contact.username === selectedContactRef.current.username);
           if (refreshedSelectedContact) {
             setSelectedContact(refreshedSelectedContact);
+          } else {
+            setSelectedContact(null);
           }
         }
 
@@ -837,6 +839,71 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       cancelled = true;
     };
   }, [contacts, loading, threadSummaries, threads]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const contactsByUsername = new Map(contacts.map((contact) => [contact.username, contact]));
+    const currentSelected = selectedContactRef.current;
+    if (currentSelected && !contactsByUsername.has(currentSelected.username)) {
+      setSelectedContact(null);
+    }
+
+    summaryBootstrapAttemptsRef.current.forEach((username) => {
+      if (!contactsByUsername.has(username)) {
+        summaryBootstrapAttemptsRef.current.delete(username);
+      }
+    });
+
+    setThreadSummaries((prev) => {
+      let changed = false;
+      const next = {};
+
+      Object.entries(prev).forEach(([username, summary]) => {
+        const contact = contactsByUsername.get(username);
+        if (!contact) {
+          changed = true;
+          return;
+        }
+
+        const nextSummary = {
+          ...summary,
+          user_id: contact.id,
+          username: contact.username,
+          display_name: contact.display_name || "",
+          avatar_url: contact.avatar_url || "",
+        };
+        if (
+          nextSummary.user_id !== summary.user_id
+          || nextSummary.username !== summary.username
+          || nextSummary.display_name !== summary.display_name
+          || nextSummary.avatar_url !== summary.avatar_url
+        ) {
+          changed = true;
+        }
+        next[username] = nextSummary;
+      });
+
+      return changed ? next : prev;
+    });
+
+    setUnreadByUser((prev) => {
+      let changed = false;
+      const next = {};
+
+      Object.entries(prev).forEach(([username, count]) => {
+        if (!contactsByUsername.has(username)) {
+          changed = true;
+          return;
+        }
+        next[username] = count;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [contacts, loading, setSelectedContact]);
 
   useEffect(() => {
     if (!syncToken || loading || appliedSyncTokenRef.current === syncToken) {
