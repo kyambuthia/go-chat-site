@@ -265,6 +265,51 @@ function messageAffectsThreadSummary(message) {
   return !getPaymentUpdateMeta(message);
 }
 
+function buildThreadSummaryLastMessage(contact, message, fallbackUserID = null) {
+  const counterpartyUserID = contact?.id ?? fallbackUserID ?? null;
+  return {
+    id: message.serverID || message.id,
+    from_user_id: message.sent ? null : counterpartyUserID,
+    to_user_id: message.sent ? counterpartyUserID : null,
+    body: message.body,
+    created_at: message.createdAt,
+  };
+}
+
+function findLatestVisibleThreadMessage(messages) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messageAffectsThreadSummary(messages[index])) {
+      return messages[index];
+    }
+  }
+  return null;
+}
+
+function upsertLocalThreadSummary(prevSummary, contact, messages, unreadCount) {
+  const latestVisible = Array.isArray(messages)
+    ? findLatestVisibleThreadMessage(messages)
+    : (messageAffectsThreadSummary(messages) ? messages : null);
+
+  if (!latestVisible) {
+    return prevSummary ? { ...prevSummary, unread_count: unreadCount } : null;
+  }
+
+  const base = prevSummary || buildLocalThreadSummary(contact, latestVisible, unreadCount);
+  if (!base) {
+    return null;
+  }
+
+  return {
+    ...base,
+    user_id: contact?.id ?? base.user_id,
+    username: contact?.username ?? base.username,
+    display_name: contact?.display_name ?? base.display_name,
+    avatar_url: contact?.avatar_url ?? base.avatar_url,
+    unread_count: unreadCount,
+    last_message: buildThreadSummaryLastMessage(contact, latestVisible, base.user_id),
+  };
+}
+
 function buildUnreadByUserFromThreadSummaries(summaries) {
   const unreadByUser = {};
   for (const summary of summaries || []) {
@@ -739,6 +784,18 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           });
         }
 
+        const syncedLatestVisibleByUsername = {};
+        const syncedUnreadVisibleCountsByUsername = {};
+        Object.entries(normalizedByUsername).forEach(([username, syncedMessagesForUser]) => {
+          const latestVisible = findLatestVisibleThreadMessage(syncedMessagesForUser);
+          if (latestVisible) {
+            syncedLatestVisibleByUsername[username] = latestVisible;
+          }
+          syncedUnreadVisibleCountsByUsername[username] = syncedMessagesForUser.filter(
+            (message) => !message.sent && !message.read && messageAffectsThreadSummary(message),
+          ).length;
+        });
+
         if (readMessageIDs.size > 0) {
           setThreads((prev) => {
             const next = { ...prev };
@@ -775,12 +832,42 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
 
         syncCursorRef.current = nextAfterID;
 
-        const threadSummariesResponse = await getMessageThreads({ limit: 200 });
-        if (!cancelled) {
-          const summaries = threadSummariesResponse || [];
-          setThreadSummaries(buildThreadSummariesByUsername(summaries));
-          setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries));
-          syncCursorRef.current = Math.max(nextAfterID, getMaxThreadSummaryMessageID(summaries));
+        if (Object.keys(syncedLatestVisibleByUsername).length > 0 || (selectedContact && readMessageIDs.size > 0)) {
+          setThreadSummaries((prev) => {
+            const next = { ...prev };
+            Object.entries(syncedLatestVisibleByUsername).forEach(([username, latestVisible]) => {
+              const contact = findContactByUsername(contacts, username);
+              const unreadCount = selectedContact?.username === username && readMessageIDs.size > 0
+                ? 0
+                : Number(next[username]?.unread_count || 0) + Number(syncedUnreadVisibleCountsByUsername[username] || 0);
+              const nextSummary = upsertLocalThreadSummary(next[username], contact, latestVisible, unreadCount);
+              if (nextSummary) {
+                next[username] = nextSummary;
+              }
+            });
+
+            if (selectedContact && readMessageIDs.size > 0 && next[selectedContact.username]) {
+              next[selectedContact.username] = {
+                ...next[selectedContact.username],
+                unread_count: 0,
+              };
+            }
+
+            return next;
+          });
+
+          setUnreadByUser((prev) => {
+            const next = { ...prev };
+            Object.entries(syncedUnreadVisibleCountsByUsername).forEach(([username, count]) => {
+              if (count > 0) {
+                next[username] = Number(next[username] || 0) + count;
+              }
+            });
+            if (selectedContact && readMessageIDs.size > 0) {
+              next[selectedContact.username] = 0;
+            }
+            return next;
+          });
         }
       } catch (err) {
         if (!cancelled) {
@@ -835,12 +922,18 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             ),
           }));
           await markThreadRead(selectedContact.id);
-          const threadSummariesResponse = await getMessageThreads({ limit: 200 });
           if (!cancelled) {
-            const summaries = threadSummariesResponse || [];
-            setThreadSummaries(buildThreadSummariesByUsername(summaries));
-            setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries));
-            syncCursorRef.current = Math.max(syncCursorRef.current, getMaxThreadSummaryMessageID(summaries));
+            setThreadSummaries((prev) => {
+              const nextSummary = upsertLocalThreadSummary(prev[selectedContact.username], selectedContact, nextThread, 0);
+              if (!nextSummary) {
+                return prev;
+              }
+              return {
+                ...prev,
+                [selectedContact.username]: nextSummary,
+              };
+            });
+            setUnreadByUser((prev) => ({ ...prev, [selectedContact.username]: 0 }));
           }
         }
       } catch (err) {
