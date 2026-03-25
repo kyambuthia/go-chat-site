@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	coremsg "github.com/kyambuthia/go-chat-site/server/internal/core/messaging"
@@ -11,6 +12,10 @@ import (
 
 type Adapter struct {
 	DB *sql.DB
+}
+
+func summaryVisibleMessagePredicate(alias string) string {
+	return fmt.Sprintf(`(substr(%[1]s.body, 1, 16) != '__microapp_v1__:' OR instr(%[1]s.body, '"kind":"payment_request_update"') = 0)`, alias)
 }
 
 var _ coremsg.MessageRepository = (*Adapter)(nil)
@@ -105,7 +110,11 @@ func (a *Adapter) ListOutboxBefore(ctx context.Context, userID int, beforeID int
 func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
 	rows, err := a.DB.QueryContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
-		       md.delivered_at, md.read_at, mc.client_message_id
+		       md.delivered_at, md.read_at, mc.client_message_id,
+		       CASE
+		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
+		           ELSE 0
+		       END AS delivery_failed
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
 		LEFT JOIN message_client_correlations mc ON mc.stored_message_id = m.id AND mc.sender_user_id = m.from_user_id
@@ -135,7 +144,11 @@ func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64
 func (a *Adapter) listOutboxQuery(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
-		       md.delivered_at, md.read_at, mc.client_message_id
+		       md.delivered_at, md.read_at, mc.client_message_id,
+		       CASE
+		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
+		           ELSE 0
+		       END AS delivery_failed
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
 		LEFT JOIN message_client_correlations mc ON mc.stored_message_id = m.id AND mc.sender_user_id = m.from_user_id
@@ -227,7 +240,7 @@ func (a *Adapter) listInboxAfterQuery(ctx context.Context, userID int, withUserI
 		args = append(args, withUserID, withUserID)
 	}
 	if unreadOnly {
-		query += ` AND md.read_at IS NULL`
+		query += ` AND md.read_at IS NULL AND ` + summaryVisibleMessagePredicate("m")
 	}
 	query += `
 		ORDER BY m.id ASC
@@ -273,7 +286,8 @@ func (a *Adapter) GetMessageForRecipient(ctx context.Context, recipientUserID in
 }
 
 func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int) ([]coremsg.ThreadSummary, error) {
-	rows, err := a.DB.QueryContext(ctx, `
+	visibleMessage := summaryVisibleMessagePredicate("m")
+	rows, err := a.DB.QueryContext(ctx, fmt.Sprintf(`
 		WITH thread_messages AS (
 			SELECT
 				m.id,
@@ -284,14 +298,21 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 				md.delivered_at,
 				md.read_at,
 				CASE WHEN m.from_user_id = ? THEN m.to_user_id ELSE m.from_user_id END AS other_user_id,
-				CASE WHEN m.to_user_id = ? AND md.read_at IS NULL THEN 1 ELSE 0 END AS unread_count,
-				ROW_NUMBER() OVER (
-					PARTITION BY CASE WHEN m.from_user_id = ? THEN m.to_user_id ELSE m.from_user_id END
-					ORDER BY m.id DESC
-				) AS thread_rank
+				CASE WHEN %s THEN 1 ELSE 0 END AS summary_visible,
+				CASE WHEN m.to_user_id = ? AND md.read_at IS NULL AND %s THEN 1 ELSE 0 END AS unread_count
 			FROM messages m
 			LEFT JOIN message_deliveries md ON md.message_id = m.id
 			WHERE m.from_user_id = ? OR m.to_user_id = ?
+		),
+		visible_thread_messages AS (
+			SELECT
+				tm.*,
+				ROW_NUMBER() OVER (
+					PARTITION BY tm.other_user_id
+					ORDER BY tm.id DESC
+				) AS thread_rank
+			FROM thread_messages tm
+			WHERE tm.summary_visible = 1
 		),
 		thread_counts AS (
 			SELECT other_user_id, SUM(unread_count) AS unread_count
@@ -311,13 +332,13 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 			tm.delivered_at,
 			tm.read_at,
 			tc.unread_count
-		FROM thread_messages tm
+		FROM visible_thread_messages tm
 		INNER JOIN thread_counts tc ON tc.other_user_id = tm.other_user_id
 		INNER JOIN users u ON u.id = tm.other_user_id
 		WHERE tm.thread_rank = 1
 		ORDER BY tm.id DESC
 		LIMIT ?
-	`, userID, userID, userID, userID, userID, limit)
+	`, visibleMessage, visibleMessage), userID, userID, userID, userID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -376,7 +397,7 @@ func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int
 		args = append(args, withUserID, withUserID)
 	}
 	if unreadOnly {
-		query += ` AND md.read_at IS NULL`
+		query += ` AND md.read_at IS NULL AND ` + summaryVisibleMessagePredicate("m")
 	}
 	if beforeID > 0 {
 		query += ` AND m.id < ?`
@@ -410,7 +431,11 @@ func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int
 func (a *Adapter) getByID(ctx context.Context, id int64) (coremsg.StoredMessage, error) {
 	row := a.DB.QueryRowContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
-		       md.delivered_at, md.read_at, mc.client_message_id
+		       md.delivered_at, md.read_at, mc.client_message_id,
+		       CASE
+		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
+		           ELSE 0
+		       END AS delivery_failed
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
 		LEFT JOIN message_client_correlations mc ON mc.stored_message_id = m.id AND mc.sender_user_id = m.from_user_id
@@ -449,7 +474,8 @@ func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
 	var deliveredAt sql.NullTime
 	var readAt sql.NullTime
 	var clientMessageID sql.NullInt64
-	if err := s.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Body, &createdAt, &deliveredAt, &readAt, &clientMessageID); err != nil {
+	var deliveryFailed int
+	if err := s.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Body, &createdAt, &deliveredAt, &readAt, &clientMessageID, &deliveryFailed); err != nil {
 		return coremsg.StoredMessage{}, err
 	}
 	msg.CreatedAt = createdAt
@@ -464,6 +490,7 @@ func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
 	if clientMessageID.Valid {
 		msg.ClientMessageID = clientMessageID.Int64
 	}
+	msg.DeliveryFailed = deliveryFailed != 0
 	return msg, nil
 }
 
