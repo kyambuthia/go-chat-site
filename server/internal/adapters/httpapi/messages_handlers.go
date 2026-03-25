@@ -428,6 +428,9 @@ func storedMessagesToJSON(msgs []coremsg.StoredMessage) []map[string]any {
 		if msg.ClientMessageID > 0 {
 			item["client_message_id"] = msg.ClientMessageID
 		}
+		if msg.DeliveryFailed {
+			item["delivery_failed"] = true
+		}
 		if msg.DeliveredAt != nil {
 			item["delivered_at"] = *msg.DeliveredAt
 		}
