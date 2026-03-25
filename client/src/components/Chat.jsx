@@ -206,8 +206,8 @@ function buildThreadHistory(contact, inboxMessages, outboxMessages) {
       delivered: Boolean(message.delivered_at),
       read: Boolean(message.read_at),
       createdAt: message.created_at,
-      failed: !message.delivered_at,
-      errorMessage: "",
+      failed: Boolean(message.delivery_failed) && !message.delivered_at && !message.read_at,
+      errorMessage: message.delivery_failed && !message.delivered_at && !message.read_at ? "Recipient was offline." : "",
     }));
 
   return sortMessages(dedupeMessages([...received, ...sent]));
@@ -227,13 +227,42 @@ function normalizeStoredMessageForContact(message, contact) {
     delivered: Boolean(message.delivered_at),
     read: Boolean(message.read_at),
     createdAt: message.created_at,
-    failed: !received && !message.delivered_at,
-    errorMessage: "",
+    failed: !received && Boolean(message.delivery_failed) && !message.delivered_at && !message.read_at,
+    errorMessage: !received && message.delivery_failed && !message.delivered_at && !message.read_at ? "Recipient was offline." : "",
   });
 }
 
 function buildThreadSummariesByUsername(summaries) {
   return Object.fromEntries((summaries || []).map((summary) => [summary.username, summary]));
+}
+
+function findContactByUsername(contacts, username) {
+  return (contacts || []).find((contact) => contact.username === username) || null;
+}
+
+function buildLocalThreadSummary(contact, message, unreadCount = 0) {
+  if (!contact) {
+    return null;
+  }
+
+  return {
+    user_id: contact.id,
+    username: contact.username,
+    display_name: contact.display_name || "",
+    avatar_url: contact.avatar_url || "",
+    unread_count: unreadCount,
+    last_message: {
+      id: message.serverID || message.id,
+      from_user_id: message.sent ? null : contact.id,
+      to_user_id: message.sent ? contact.id : null,
+      body: message.body,
+      created_at: message.createdAt,
+    },
+  };
+}
+
+function messageAffectsThreadSummary(message) {
+  return !getPaymentUpdateMeta(message);
 }
 
 function buildUnreadByUserFromThreadSummaries(summaries) {
@@ -411,6 +440,7 @@ function ChatWindow({
 
           const msg = entry.message;
           const paymentRequest = getPaymentRequestMeta(msg);
+          const paymentUpdate = getPaymentUpdateMeta(msg);
           const isPaymentRequest = !!paymentRequest;
           const isReceivedRequest = isPaymentRequest && !msg.sent;
           const isPendingRequest = isPaymentRequest && paymentRequest.status === "pending";
@@ -465,6 +495,10 @@ function ChatWindow({
                     </div>
                   )}
                 </>
+              ) : paymentUpdate ? (
+                <div className="message-body">
+                  {paymentUpdate.status === "paid" ? "Payment marked paid" : "Payment update"}
+                </div>
               ) : (
                 <div className="message-body">{msg.body}</div>
               )}
@@ -480,7 +514,7 @@ function ChatWindow({
                     ) : msg.failed ? (
                       <span className="message-status-label is-error" title={msg.errorMessage || "Not delivered"}>Not delivered</span>
                     ) : (
-                      <span className="message-status-label">Sending…</span>
+                      <span className="message-status-label">{msg.serverID ? "Pending" : "Sending…"}</span>
                     )}
                   </>
                 )}
@@ -710,7 +744,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             const next = { ...prev };
             Object.keys(next).forEach((username) => {
               next[username] = next[username].map((message) =>
-                readMessageIDs.has(message.serverID) ? { ...message, delivered: true, read: true } : message
+                readMessageIDs.has(message.serverID)
+                  ? { ...message, delivered: true, read: true, failed: false, errorMessage: "" }
+                  : message
               );
             });
             return next;
@@ -724,7 +760,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             const next = { ...prev };
             Object.keys(next).forEach((username) => {
               next[username] = next[username].map((message) =>
-                deliveredMessageIDs.has(message.serverID) ? { ...message, delivered: true } : message
+                deliveredMessageIDs.has(message.serverID)
+                  ? { ...message, delivered: true, failed: false, errorMessage: "" }
+                  : message
               );
             });
             return next;
@@ -789,7 +827,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           setThreads((prev) => ({
             ...prev,
             [selectedContact.username]: (prev[selectedContact.username] || []).map((message) =>
-              unreadServerIDs.includes(message.serverID) ? { ...message, read: true, delivered: true } : message
+              unreadServerIDs.includes(message.serverID)
+                ? { ...message, read: true, delivered: true, failed: false, errorMessage: "" }
+                : message
             ),
           }));
           await Promise.allSettled(unreadServerIDs.map((messageID) => markMessageRead(messageID)));
@@ -871,10 +911,10 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             }
 
             if (lastWsMessage.type === "message_read") {
-              return { ...msg, delivered: true, read: true };
+              return { ...msg, delivered: true, read: true, failed: false, errorMessage: "" };
             }
 
-            return { ...msg, delivered: true };
+            return { ...msg, delivered: true, failed: false, errorMessage: "" };
           });
         });
         return next;
@@ -938,19 +978,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
 
     if (lastWsMessage.type === "direct_message" && lastWsMessage.from) {
       const paymentUpdate = getPaymentUpdateMeta(lastWsMessage);
-      if (paymentUpdate) {
-        setThreads((prev) => {
-          const next = { ...prev };
-          const existing = next[lastWsMessage.from] || [];
-          next[lastWsMessage.from] = updateThreadPaymentRequest(existing, paymentUpdate.requestId, {
-            paymentStatus: paymentUpdate.status,
-            paymentError: "",
-          });
-          return next;
-        });
-        return;
-      }
-
+      const shouldAffectSummary = !paymentUpdate;
       const normalized = addPaymentRequestMetadata({
         ...lastWsMessage,
         id: lastWsMessage.id || Date.now(),
@@ -960,42 +988,57 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         delivered: false,
         read: false,
       });
+      const messageContact = findContactByUsername(contacts, lastWsMessage.from);
 
       setThreads((prev) => {
         const existing = prev[lastWsMessage.from] || [];
+        const merged = sortMessages(dedupeMessages([...existing, normalized]));
         return {
           ...prev,
-          [lastWsMessage.from]: sortMessages(dedupeMessages([...existing, normalized])),
+          [lastWsMessage.from]: paymentUpdate
+            ? updateThreadPaymentRequest(merged, paymentUpdate.requestId, {
+              paymentStatus: paymentUpdate.status,
+              paymentError: "",
+            })
+            : merged,
         };
       });
-      setThreadSummaries((prev) => {
-        const existing = prev[lastWsMessage.from];
-        if (!existing) {
-          return prev;
-        }
-        return {
-          ...prev,
-          [lastWsMessage.from]: {
-            ...existing,
-            unread_count: selectedUsername !== lastWsMessage.from
-              ? Number(existing.unread_count || 0) + 1
-              : 0,
-            last_message: {
-              id: normalized.serverID || normalized.id,
-              from_user_id: existing.user_id,
-              to_user_id: null,
-              body: normalized.body,
-              created_at: normalized.createdAt,
+      if (shouldAffectSummary) {
+        setThreadSummaries((prev) => {
+          const existing = prev[lastWsMessage.from] || buildLocalThreadSummary(
+            messageContact,
+            normalized,
+            selectedUsername !== lastWsMessage.from ? 1 : 0,
+          );
+          if (!existing) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [lastWsMessage.from]: {
+              ...existing,
+              unread_count: selectedUsername !== lastWsMessage.from
+                ? Number(existing.unread_count || 0) + 1
+                : 0,
+              last_message: {
+                id: normalized.serverID || normalized.id,
+                from_user_id: existing.user_id,
+                to_user_id: null,
+                body: normalized.body,
+                created_at: normalized.createdAt,
+              },
             },
-          },
-        };
-      });
+          };
+        });
+      }
 
       if (selectedUsername !== lastWsMessage.from) {
-        setUnreadByUser((prev) => ({
-          ...prev,
-          [lastWsMessage.from]: (prev[lastWsMessage.from] || 0) + 1,
-        }));
+        if (shouldAffectSummary) {
+          setUnreadByUser((prev) => ({
+            ...prev,
+            [lastWsMessage.from]: (prev[lastWsMessage.from] || 0) + 1,
+          }));
+        }
 
         if (lastWsMessage.id) {
           void markMessageDelivered(lastWsMessage.id).catch((err) => {
@@ -1008,7 +1051,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         });
       }
     }
-  }, [lastWsMessage, selectedContact, selectedUsername]);
+  }, [contacts, lastWsMessage, selectedContact, selectedUsername]);
 
   useEffect(() => {
     if (!selectedUsername) {
@@ -1072,6 +1115,13 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       ...prev,
       [selectedUsername]: sortMessages([...(prev[selectedUsername] || []), normalized]),
     }));
+    if (messageAffectsThreadSummary(normalized)) {
+      setThreadSummaries((prev) => ({
+        ...prev,
+        [selectedUsername]: buildLocalThreadSummary(selectedContact, normalized, 0),
+      }));
+    }
+    setUnreadByUser((prev) => ({ ...prev, [selectedUsername]: 0 }));
   };
 
   const handleSettlePaymentRequest = async (message) => {
