@@ -327,6 +327,42 @@ func TestMessagesHandler_GetOutbox_UsesPersistenceServiceAndSupportsLimit(t *tes
 	}
 }
 
+func TestMessagesHandler_GetOutbox_EmitsDeliveryFailedFlagWhenPresent(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	svc := &fakeMessagingPersistence{
+		outboxResp: []coremsg.StoredMessage{{
+			ID:              21,
+			FromUserID:      2,
+			ToUserID:        1,
+			Body:            "offline-send",
+			CreatedAt:       now,
+			ClientMessageID: 55,
+			DeliveryFailed:  true,
+		}},
+	}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/outbox?limit=5", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+	h.GetOutbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(resp) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(resp))
+	}
+	if got, ok := resp[0]["delivery_failed"].(bool); !ok || !got {
+		t.Fatalf("delivery_failed = %#v, want true", resp[0]["delivery_failed"])
+	}
+}
+
 func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	delivered := now.Add(time.Minute)
