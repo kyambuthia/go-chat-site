@@ -723,6 +723,22 @@ button.accept {
   background: #fff;
 }
 
+.contacts-action-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.contacts-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.contacts-inline-form .form-group {
+  margin-bottom: 0;
+}
+
 .search-wrap {
   display: flex;
   align-items: center;
@@ -825,8 +841,8 @@ button.accept {
   margin-bottom: 0;
 }
 
-.contacts-error {
-  margin-top: var(--space-2);
+.contacts-status {
+  margin-top: 0;
 }
 
 .account-page .user-card,
@@ -1164,6 +1180,7 @@ button.accept {
     grid-template-columns: 1fr;
   }
 
+  .contacts-inline-form,
   .invite.invite-compact form {
     grid-template-columns: 1fr;
   }
