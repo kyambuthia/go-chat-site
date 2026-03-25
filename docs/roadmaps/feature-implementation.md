@@ -15,16 +15,15 @@ Implemented today:
 - contacts and invite workflows
 - centralized 1:1 WebSocket relay
 - durable message persistence on the backend, plus inbox/outbox/read/delivered APIs
-- wallet balance lookup and direct user-to-user transfer
-- read-only account/profile fetch
+- client thread hydration, reconnect sync, and receipt handling
+- wallet balance lookup, transfer history, and direct user-to-user transfer
+- account/profile fetch and update
+- direct add/remove contacts UI plus invite workflows
 - health/readiness checks, request logging, and basic rate limiting
 
 Not complete end-to-end today:
-- missed-message recovery in the client
-- message delivery/read/error UX in the client
-- contact add/remove UX
-- profile editing
-- wallet transfer UX and transfer history
+- device identity/E2EE UX
+- broader multi-device presence semantics
 - marketplace, escrow, external rails, E2EE, and P2P transport
 
 ## Delivery Order
