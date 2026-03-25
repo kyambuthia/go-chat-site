@@ -310,6 +310,10 @@ function upsertLocalThreadSummary(prevSummary, contact, messages, unreadCount) {
   };
 }
 
+function buildUnreadCountForThread(messages) {
+  return (messages || []).filter((message) => !message.sent && !message.read && messageAffectsThreadSummary(message)).length;
+}
+
 function buildUnreadByUserFromThreadSummaries(summaries) {
   const unreadByUser = {};
   for (const summary of summaries || []) {
@@ -685,6 +689,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const summaryBootstrapAttemptsRef = useRef(new Set());
   const hydratedThreadsRef = useRef(new Set());
   const selectedContactRef = useRef(selectedContact);
+  const threadsRef = useRef(threads);
+  const threadSummariesRef = useRef(threadSummaries);
+  const unreadByUserRef = useRef(unreadByUser);
 
   const selectedUsername = selectedContact?.username;
   const messages = selectedUsername ? (threads[selectedUsername] || []) : [];
@@ -692,6 +699,18 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   useEffect(() => {
     selectedContactRef.current = selectedContact;
   }, [selectedContact]);
+
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+
+  useEffect(() => {
+    threadSummariesRef.current = threadSummaries;
+  }, [threadSummaries]);
+
+  useEffect(() => {
+    unreadByUserRef.current = unreadByUser;
+  }, [unreadByUser]);
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -763,7 +782,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       candidateContacts.forEach((contact) => {
         const existingThread = threads[contact.username] || [];
         if (existingThread.length > 0) {
-          const unreadCount = existingThread.filter((message) => !message.sent && !message.read && messageAffectsThreadSummary(message)).length;
+          const unreadCount = buildUnreadCountForThread(existingThread);
           const nextSummary = upsertLocalThreadSummary(null, contact, existingThread, unreadCount);
           if (nextSummary) {
             localSummaryUpdates[contact.username] = nextSummary;
@@ -808,7 +827,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           }
 
           nextThreads[contact.username] = thread;
-          const unreadCount = thread.filter((message) => !message.sent && !message.read && messageAffectsThreadSummary(message)).length;
+          const unreadCount = buildUnreadCountForThread(thread);
           const nextSummary = upsertLocalThreadSummary(null, contact, thread, unreadCount);
           if (!nextSummary) {
             return;
@@ -989,9 +1008,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           if (latestVisible) {
             syncedLatestVisibleByUsername[username] = latestVisible;
           }
-          syncedUnreadVisibleCountsByUsername[username] = syncedMessagesForUser.filter(
-            (message) => !message.sent && !message.read && messageAffectsThreadSummary(message),
-          ).length;
+          syncedUnreadVisibleCountsByUsername[username] = buildUnreadCountForThread(syncedMessagesForUser);
         });
 
         if (readMessageIDs.size > 0) {
@@ -1166,120 +1183,137 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       return;
     }
 
-    if (lastWsMessage.type === "message_ack") {
-      setThreads((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((username) => {
-          next[username] = next[username].map((msg) =>
-            msg.clientID === lastWsMessage.id || (msg.id === lastWsMessage.id && !msg.serverID)
-              ? {
-                ...msg,
-                serverID: lastWsMessage.stored_message_id || msg.serverID,
-                delivered: true,
-                failed: false,
-                errorMessage: "",
-              }
-              : msg
-          );
-        });
-        return next;
+    const reconcileLocalThreadCollections = (nextThreads, usernames) => {
+      const uniqueUsernames = [...new Set((usernames || []).filter(Boolean))];
+      if (uniqueUsernames.length === 0) {
+        return;
+      }
+
+      const nextSummaries = { ...threadSummariesRef.current };
+      const nextUnreadByUser = { ...unreadByUserRef.current };
+
+      uniqueUsernames.forEach((username) => {
+        const thread = nextThreads[username] || [];
+        const contact = findContactByUsername(contacts, username);
+        const unreadCount = buildUnreadCountForThread(thread);
+        const nextSummary = upsertLocalThreadSummary(nextSummaries[username] || null, contact, thread, unreadCount);
+
+        if (nextSummary) {
+          nextSummaries[username] = nextSummary;
+          nextUnreadByUser[username] = unreadCount;
+        } else {
+          delete nextSummaries[username];
+          delete nextUnreadByUser[username];
+        }
       });
 
-      if (selectedContact) {
-        void (async () => {
-          try {
-            const [inboxMessages, outboxMessages] = await Promise.all([
-              getInbox({ withUserID: selectedContact.id, limit: 100 }),
-              getOutbox({ limit: 200 }),
-            ]);
-            hydratedThreadsRef.current.add(selectedContact.username);
-            setThreads((prev) => ({
-              ...prev,
-              [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
-            }));
-            const summaries = await getMessageThreads({ limit: 200 });
-            setThreadSummaries(buildThreadSummariesByUsername(summaries || []));
-            setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries || []));
-          } catch (err) {
-            console.error("Failed to refresh thread after ack:", err);
+      threadSummariesRef.current = nextSummaries;
+      unreadByUserRef.current = nextUnreadByUser;
+      setThreadSummaries(nextSummaries);
+      setUnreadByUser(nextUnreadByUser);
+    };
+
+    if (lastWsMessage.type === "message_ack") {
+      const nextThreads = { ...threadsRef.current };
+      const affectedUsernames = [];
+
+      Object.keys(nextThreads).forEach((username) => {
+        let changed = false;
+        const updatedThread = nextThreads[username].map((msg) => {
+          if (msg.clientID !== lastWsMessage.id && !(msg.id === lastWsMessage.id && !msg.serverID)) {
+            return msg;
           }
-        })();
+          changed = true;
+          return {
+            ...msg,
+            serverID: lastWsMessage.stored_message_id || msg.serverID,
+            delivered: true,
+            failed: false,
+            errorMessage: "",
+          };
+        });
+        if (changed) {
+          nextThreads[username] = updatedThread;
+          affectedUsernames.push(username);
+        }
+      });
+
+      if (affectedUsernames.length > 0) {
+        threadsRef.current = nextThreads;
+        setThreads(nextThreads);
+        reconcileLocalThreadCollections(nextThreads, affectedUsernames);
       }
       return;
     }
 
     if (lastWsMessage.type === "message_delivered" || lastWsMessage.type === "message_read") {
-      setThreads((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((username) => {
-          next[username] = next[username].map((msg) => {
-            if (msg.serverID !== lastWsMessage.id) {
-              return msg;
-            }
+      const nextThreads = { ...threadsRef.current };
+      const affectedUsernames = [];
 
-            if (lastWsMessage.type === "message_read") {
-              return { ...msg, delivered: true, read: true, failed: false, errorMessage: "" };
-            }
+      Object.keys(nextThreads).forEach((username) => {
+        let changed = false;
+        const updatedThread = nextThreads[username].map((msg) => {
+          if (msg.serverID !== lastWsMessage.id) {
+            return msg;
+          }
 
-            return { ...msg, delivered: true, failed: false, errorMessage: "" };
-          });
+          changed = true;
+          if (lastWsMessage.type === "message_read") {
+            return { ...msg, delivered: true, read: true, failed: false, errorMessage: "" };
+          }
+
+          return { ...msg, delivered: true, failed: false, errorMessage: "" };
         });
-        return next;
-      });
-      void (async () => {
-        try {
-          const summaries = await getMessageThreads({ limit: 200 });
-          setThreadSummaries(buildThreadSummariesByUsername(summaries || []));
-          setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries || []));
-        } catch (err) {
-          console.error("Failed to refresh thread summaries after receipt:", err);
+
+        if (changed) {
+          nextThreads[username] = updatedThread;
+          affectedUsernames.push(username);
         }
-      })();
+      });
+
+      if (affectedUsernames.length > 0) {
+        threadsRef.current = nextThreads;
+        setThreads(nextThreads);
+        reconcileLocalThreadCollections(nextThreads, affectedUsernames);
+      }
       return;
     }
 
     if (lastWsMessage.type === "error") {
-      setThreads((prev) => {
-        const next = { ...prev };
-        Object.keys(next).forEach((username) => {
-          next[username] = next[username].map((msg) =>
-            msg.clientID === lastWsMessage.id || (msg.id === lastWsMessage.id && !msg.serverID)
-              ? {
-                ...msg,
-                serverID: lastWsMessage.stored_message_id || msg.serverID,
-                failed: true,
-                delivered: false,
-                errorMessage: lastWsMessage.body || "Delivery failed.",
-              }
-              : msg
-          );
+      const nextThreads = { ...threadsRef.current };
+      const affectedUsernames = [];
+
+      Object.keys(nextThreads).forEach((username) => {
+        let changed = false;
+        const updatedThread = nextThreads[username].map((msg) => {
+          if (msg.clientID !== lastWsMessage.id && !(msg.id === lastWsMessage.id && !msg.serverID)) {
+            return msg;
+          }
+
+          changed = true;
+          return {
+            ...msg,
+            serverID: lastWsMessage.stored_message_id || msg.serverID,
+            failed: true,
+            delivered: false,
+            errorMessage: lastWsMessage.body || "Delivery failed.",
+          };
         });
-        return next;
+
+        if (changed) {
+          nextThreads[username] = updatedThread;
+          affectedUsernames.push(username);
+        }
       });
+
+      if (affectedUsernames.length > 0) {
+        threadsRef.current = nextThreads;
+        setThreads(nextThreads);
+        reconcileLocalThreadCollections(nextThreads, affectedUsernames);
+      }
 
       if (selectedUsername && lastWsMessage.to === selectedUsername) {
         setError(null);
-      }
-
-      if (selectedContact && lastWsMessage.to === selectedContact.username && lastWsMessage.body?.startsWith("User is not online:")) {
-        void (async () => {
-          try {
-            const [inboxMessages, outboxMessages] = await Promise.all([
-              getInbox({ withUserID: selectedContact.id, limit: 100 }),
-              getOutbox({ limit: 200 }),
-            ]);
-            hydratedThreadsRef.current.add(selectedContact.username);
-            setThreads((prev) => ({
-              ...prev,
-              [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
-            }));
-            const summaries = await getMessageThreads({ limit: 200 });
-            setThreadSummaries(buildThreadSummariesByUsername(summaries || []));
-            setUnreadByUser(buildUnreadByUserFromThreadSummaries(summaries || []));
-          } catch (err) {
-            console.error("Failed to refresh thread after delivery error:", err);
-          }
-        })();
       }
       return;
     }

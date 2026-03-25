@@ -15,7 +15,7 @@ Implemented today:
 - contacts and invite workflows
 - centralized 1:1 WebSocket relay
 - durable message persistence on the backend, plus inbox/outbox/read/delivered APIs
-- client thread hydration, reconnect sync, and receipt handling
+- client thread hydration, reconnect sync, durable thread summaries/unread state, and receipt reconciliation across HTTP/WebSocket flows
 - wallet balance lookup, transfer history, and direct user-to-user transfer
 - account/profile fetch and update
 - direct add/remove contacts UI plus invite workflows
