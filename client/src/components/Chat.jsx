@@ -683,6 +683,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const appliedSyncTokenRef = useRef(0);
   const contactsHydratedRef = useRef(false);
   const summaryBootstrapAttemptsRef = useRef(new Set());
+  const hydratedThreadsRef = useRef(new Set());
   const selectedContactRef = useRef(selectedContact);
 
   const selectedUsername = selectedContact?.username;
@@ -801,6 +802,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         const nextUnreadByUser = {};
 
         bootstrappedThreads.forEach(({ contact, thread }) => {
+          hydratedThreadsRef.current.add(contact.username);
           if (thread.length === 0) {
             return;
           }
@@ -854,6 +856,11 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     summaryBootstrapAttemptsRef.current.forEach((username) => {
       if (!contactsByUsername.has(username)) {
         summaryBootstrapAttemptsRef.current.delete(username);
+      }
+    });
+    hydratedThreadsRef.current.forEach((username) => {
+      if (!contactsByUsername.has(username)) {
+        hydratedThreadsRef.current.delete(username);
       }
     });
 
@@ -1081,8 +1088,47 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
 
     let cancelled = false;
 
+    const applySelectedThreadReadState = async (thread) => {
+      const unreadServerIDs = thread
+        .filter((message) => !message.sent && message.serverID && !message.read)
+        .map((message) => message.serverID);
+
+      if (unreadServerIDs.length === 0) {
+        return;
+      }
+
+      setThreads((prev) => ({
+        ...prev,
+        [selectedContact.username]: (prev[selectedContact.username] || []).map((message) =>
+          unreadServerIDs.includes(message.serverID)
+            ? { ...message, read: true, delivered: true, failed: false, errorMessage: "" }
+            : message
+        ),
+      }));
+      await markThreadRead(selectedContact.id);
+      if (!cancelled) {
+        setThreadSummaries((prev) => {
+          const nextSummary = upsertLocalThreadSummary(prev[selectedContact.username], selectedContact, thread, 0);
+          if (!nextSummary) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [selectedContact.username]: nextSummary,
+          };
+        });
+        setUnreadByUser((prev) => ({ ...prev, [selectedContact.username]: 0 }));
+      }
+    };
+
     const loadThreadHistory = async () => {
       try {
+        if (hydratedThreadsRef.current.has(selectedContact.username)) {
+          const existingThread = threads[selectedContact.username] || [];
+          await applySelectedThreadReadState(existingThread);
+          return;
+        }
+
         const [inboxMessages, outboxMessages] = await Promise.all([
           getInbox({ withUserID: selectedContact.id, limit: 100 }),
           getOutbox({ limit: 200 }),
@@ -1093,40 +1139,14 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         }
 
         const nextThread = buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []);
+        hydratedThreadsRef.current.add(selectedContact.username);
 
         setThreads((prev) => ({
           ...prev,
           [selectedContact.username]: nextThread,
         }));
 
-        const unreadServerIDs = nextThread
-          .filter((message) => !message.sent && message.serverID && !message.read)
-          .map((message) => message.serverID);
-
-        if (unreadServerIDs.length > 0) {
-          setThreads((prev) => ({
-            ...prev,
-            [selectedContact.username]: (prev[selectedContact.username] || []).map((message) =>
-              unreadServerIDs.includes(message.serverID)
-                ? { ...message, read: true, delivered: true, failed: false, errorMessage: "" }
-                : message
-            ),
-          }));
-          await markThreadRead(selectedContact.id);
-          if (!cancelled) {
-            setThreadSummaries((prev) => {
-              const nextSummary = upsertLocalThreadSummary(prev[selectedContact.username], selectedContact, nextThread, 0);
-              if (!nextSummary) {
-                return prev;
-              }
-              return {
-                ...prev,
-                [selectedContact.username]: nextSummary,
-              };
-            });
-            setUnreadByUser((prev) => ({ ...prev, [selectedContact.username]: 0 }));
-          }
-        }
+        await applySelectedThreadReadState(nextThread);
       } catch (err) {
         if (!cancelled) {
           console.error("Failed to load thread history:", err);
@@ -1139,7 +1159,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     return () => {
       cancelled = true;
     };
-  }, [selectedContact]);
+  }, [selectedContact, threads]);
 
   useEffect(() => {
     if (!lastWsMessage) {
@@ -1172,6 +1192,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
               getInbox({ withUserID: selectedContact.id, limit: 100 }),
               getOutbox({ limit: 200 }),
             ]);
+            hydratedThreadsRef.current.add(selectedContact.username);
             setThreads((prev) => ({
               ...prev,
               [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
@@ -1247,6 +1268,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
               getInbox({ withUserID: selectedContact.id, limit: 100 }),
               getOutbox({ limit: 200 }),
             ]);
+            hydratedThreadsRef.current.add(selectedContact.username);
             setThreads((prev) => ({
               ...prev,
               [selectedContact.username]: buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []),
