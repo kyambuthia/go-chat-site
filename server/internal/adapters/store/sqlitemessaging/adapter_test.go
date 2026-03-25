@@ -318,6 +318,40 @@ func TestAdapter_ListUnreadInbox_FiltersReadMessages(t *testing.T) {
 	}
 }
 
+func TestAdapter_ListUnreadInbox_ExcludesPaymentUpdateControlMessages(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	if _, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       `__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+	}); err != nil {
+		t.Fatalf("SaveDirectMessage payment update: %v", err)
+	}
+	visibleMsg, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "visible-message",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage visible msg: %v", err)
+	}
+
+	inbox, err := a.ListUnreadInbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListUnreadInbox error: %v", err)
+	}
+	if len(inbox) != 1 {
+		t.Fatalf("expected 1 unread visible message, got %d", len(inbox))
+	}
+	if inbox[0].ID != visibleMsg.ID || inbox[0].Body != "visible-message" {
+		t.Fatalf("unexpected unread inbox contents: %+v", inbox)
+	}
+}
+
 func TestAdapter_RecordClientMessageCorrelation_UpsertsBySenderAndClientMessageID(t *testing.T) {
 	s := newMessagingStore(t)
 	aliceID := seedUser(t, s, "alice")
@@ -443,6 +477,55 @@ func TestAdapter_ListOutbox_ReturnsSentMessagesDescendingByID(t *testing.T) {
 	}
 }
 
+func TestAdapter_ListOutbox_ExposesDurableDeliveryFailureState(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: bobID,
+		ToUserID:   aliceID,
+		Body:       "offline-send",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage: %v", err)
+	}
+
+	if err := a.RecordClientMessageCorrelation(context.Background(), coremsg.ClientMessageCorrelation{
+		SenderUserID:    bobID,
+		RecipientUserID: aliceID,
+		ClientMessageID: 555,
+		StoredMessageID: saved.ID,
+		Delivered:       false,
+	}); err != nil {
+		t.Fatalf("RecordClientMessageCorrelation: %v", err)
+	}
+
+	outbox, err := a.ListOutbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListOutbox error: %v", err)
+	}
+	if len(outbox) != 1 {
+		t.Fatalf("expected 1 outbox message, got %d", len(outbox))
+	}
+	if !outbox[0].DeliveryFailed {
+		t.Fatalf("DeliveryFailed = %v, want true", outbox[0].DeliveryFailed)
+	}
+
+	if err := a.MarkDelivered(context.Background(), saved.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("MarkDelivered: %v", err)
+	}
+
+	outbox, err = a.ListOutbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListOutbox after delivery error: %v", err)
+	}
+	if outbox[0].DeliveryFailed {
+		t.Fatalf("DeliveryFailed = %v, want false after delivery", outbox[0].DeliveryFailed)
+	}
+}
+
 func TestAdapter_ListOutboxBeforeAndAfter_PaginatesByMessageID(t *testing.T) {
 	s := newMessagingStore(t)
 	aliceID := seedUser(t, s, "alice")
@@ -547,5 +630,49 @@ func TestAdapter_ListThreadSummaries_ReturnsLatestMessageAndUnreadCounts(t *test
 	}
 	if msg1.ID == summaries[1].LastMessageID {
 		t.Fatalf("expected latest alice thread message to be msg2, got %+v", summaries[1])
+	}
+}
+
+func TestAdapter_ListThreadSummaries_IgnorePaymentUpdateControlMessages(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	visibleMsg, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       "request sent",
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage visible msg: %v", err)
+	}
+	if err := a.MarkRead(context.Background(), visibleMsg.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("MarkRead visible msg: %v", err)
+	}
+
+	if _, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID: aliceID,
+		ToUserID:   bobID,
+		Body:       `__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+	}); err != nil {
+		t.Fatalf("SaveDirectMessage payment update: %v", err)
+	}
+
+	summaries, err := a.ListThreadSummaries(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListThreadSummaries error: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	if summaries[0].LastMessageID != visibleMsg.ID {
+		t.Fatalf("LastMessageID = %d, want %d", summaries[0].LastMessageID, visibleMsg.ID)
+	}
+	if summaries[0].LastMessageBody != "request sent" {
+		t.Fatalf("LastMessageBody = %q, want request sent", summaries[0].LastMessageBody)
+	}
+	if summaries[0].UnreadCount != 0 {
+		t.Fatalf("UnreadCount = %d, want 0", summaries[0].UnreadCount)
 	}
 }
