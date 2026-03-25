@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { getContacts, getInbox, getMessageThreads, getOutbox, markMessageDelivered, markMessageRead, sendMoney, syncMessages } from "../api";
+import { getContacts, getInbox, getMessageThreads, getOutbox, markMessageDelivered, markMessageRead, markThreadRead, sendMoney, syncMessages } from "../api";
 import {
   CheckIcon,
   PaperPlaneIcon,
@@ -752,7 +752,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
             return next;
           });
 
-          await Promise.allSettled([...readMessageIDs].map((messageID) => markMessageRead(messageID)));
+          if (selectedContact) {
+            await markThreadRead(selectedContact.id);
+          }
         }
 
         if (deliveredMessageIDs.size > 0) {
@@ -832,7 +834,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
                 : message
             ),
           }));
-          await Promise.allSettled(unreadServerIDs.map((messageID) => markMessageRead(messageID)));
+          await markThreadRead(selectedContact.id);
           const threadSummariesResponse = await getMessageThreads({ limit: 200 });
           if (!cancelled) {
             const summaries = threadSummariesResponse || [];

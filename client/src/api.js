@@ -392,6 +392,12 @@ export const markMessageRead = (messageID) =>
     body: JSON.stringify({ message_id: messageID }),
   });
 
+export const markThreadRead = (withUserID) =>
+  apiRequest("/api/messaging/read-thread", {
+    method: "POST",
+    body: JSON.stringify({ with_user_id: withUserID }),
+  });
+
 export const markMessageDelivered = (messageID) =>
   apiRequest("/api/messages/delivered", {
     method: "POST",

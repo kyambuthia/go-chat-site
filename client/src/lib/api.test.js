@@ -17,6 +17,7 @@ import {
   logoutSession,
   markMessageDelivered,
   markMessageRead,
+  markThreadRead,
   removeContact,
   revokeSession,
   sendMoney,
@@ -374,6 +375,24 @@ test("markMessageRead posts message id", async () => {
 
   assert.equal(capturedOptions.method, "POST");
   assert.deepEqual(JSON.parse(capturedOptions.body), { message_id: 52 });
+});
+
+test("markThreadRead posts counterparty user id", async () => {
+  setToken("token-read-thread");
+
+  let capturedURL = "";
+  let capturedOptions = null;
+  global.fetch = async (url, options) => {
+    capturedURL = url;
+    capturedOptions = options;
+    return jsonResponse(200, null, { "content-length": "0" });
+  };
+
+  await markThreadRead(7);
+
+  assert.equal(capturedURL, "http://localhost:8080/api/messaging/read-thread");
+  assert.equal(capturedOptions.method, "POST");
+  assert.deepEqual(JSON.parse(capturedOptions.body), { with_user_id: 7 });
 });
 
 test("markMessageDelivered posts message id", async () => {

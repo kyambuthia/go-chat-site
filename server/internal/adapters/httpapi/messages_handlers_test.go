@@ -31,6 +31,7 @@ type fakeMessagingPersistence struct {
 	lastDeliveredID  int64
 	deliveredErr     error
 	lastReadID       int64
+	readIDs          []int64
 	readErr          error
 	getMsgResp       coremsg.StoredMessage
 	getMsgErr        error
@@ -67,6 +68,7 @@ func (f *fakeMessagingPersistence) MarkReadForRecipient(ctx context.Context, rec
 	_ = ctx
 	_ = recipientUserID
 	f.lastReadID = messageID
+	f.readIDs = append(f.readIDs, messageID)
 	return f.readErr
 }
 
@@ -744,6 +746,79 @@ func TestMessagesHandler_MarkRead_ValidatesAndDelegates(t *testing.T) {
 		h.MarkRead(rr, req)
 		if rr.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+	})
+}
+
+func TestMessagesHandler_MarkThreadRead_ValidatesAndDelegates(t *testing.T) {
+	t.Run("success", func(t *testing.T) {
+		readAt := time.Now().UTC()
+		svc := &fakeMessagingPersistence{
+			listResp: []coremsg.StoredMessage{
+				{ID: 41, FromUserID: 7, ToUserID: 2, Body: "first"},
+				{ID: 42, FromUserID: 7, ToUserID: 2, Body: "second", ReadAt: &readAt},
+				{ID: 43, FromUserID: 7, ToUserID: 2, Body: "third"},
+			},
+		}
+		tp := &fakeTransport{ok: true}
+		h := &MessagesHandler{Messaging: svc, ReceiptTransport: tp}
+
+		req := httptest.NewRequest(http.MethodPost, "/api/messaging/read-thread", bytes.NewReader([]byte(`{"with_user_id":7}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkThreadRead(rr, req)
+		if rr.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rr.Code)
+		}
+		if svc.lastUserID != 2 || svc.lastWithUserID != 7 || svc.lastLimit != 200 {
+			t.Fatalf("unexpected ListInboxWithUser call user=%d with=%d limit=%d", svc.lastUserID, svc.lastWithUserID, svc.lastLimit)
+		}
+		if len(svc.readIDs) != 2 || svc.readIDs[0] != 41 || svc.readIDs[1] != 43 {
+			t.Fatalf("unexpected readIDs: %+v", svc.readIDs)
+		}
+		if tp.lastTo != 7 || tp.lastMsg.Type != coremsg.KindMessageRead || tp.lastMsg.ID != 43 {
+			t.Fatalf("unexpected receipt push to=%d msg=%+v", tp.lastTo, tp.lastMsg)
+		}
+	})
+
+	t.Run("invalid body", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messaging/read-thread", bytes.NewReader([]byte(`{`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkThreadRead(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("invalid with user id", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messaging/read-thread", bytes.NewReader([]byte(`{"with_user_id":0}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkThreadRead(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rr.Code)
+		}
+	})
+
+	t.Run("list error", func(t *testing.T) {
+		h := &MessagesHandler{Messaging: &fakeMessagingPersistence{listWithUserErr: errors.New("db down")}}
+		req := httptest.NewRequest(http.MethodPost, "/api/messaging/read-thread", bytes.NewReader([]byte(`{"with_user_id":7}`)))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(auth.WithUserID(req.Context(), 2))
+		rr := httptest.NewRecorder()
+
+		h.MarkThreadRead(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rr.Code)
 		}
 	})
 }

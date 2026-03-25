@@ -1501,6 +1501,95 @@ func TestMessagesReadRoute_AdditiveReceiptEndpoint(t *testing.T) {
 	})
 }
 
+func TestMessagesReadThreadRoute_ClearsUnreadStateForOneConversation(t *testing.T) {
+	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := store.NewSqliteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.DB.Close() })
+	if err := migrate.RunMigrations(s.DB, "../../migrations"); err != nil {
+		t.Fatal(err)
+	}
+
+	aliceID, err := s.CreateUser("alice", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, err := s.CreateUser("bob", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	charlieID, err := s.CreateUser("charlie", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := auth.GenerateToken(bobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	aliceMessageIDs := make([]int64, 0, 2)
+	for _, body := range []string{
+		"hello",
+		`__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+	} {
+		res, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, aliceID, bobID, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		messageID, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		aliceMessageIDs = append(aliceMessageIDs, messageID)
+	}
+
+	charlieRes, err := s.DB.Exec(`INSERT INTO messages (from_user_id, to_user_id, body) VALUES (?, ?, ?)`, charlieID, bobID, "other-thread")
+	if err != nil {
+		t.Fatal(err)
+	}
+	charlieMessageID, err := charlieRes.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hub := wsrelay.NewHub()
+	go hub.Run()
+	defer hub.Shutdown()
+	apiHandler := NewAPI(s, hub)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/messaging/read-thread", bytes.NewReader([]byte(`{"with_user_id":`+strconv.Itoa(aliceID)+`}`)))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	apiHandler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rr.Code, rr.Body.String())
+	}
+
+	for _, messageID := range aliceMessageIDs {
+		var deliveredAt, readAt sql.NullTime
+		if err := s.DB.QueryRow(`SELECT delivered_at, read_at FROM message_deliveries WHERE message_id = ?`, messageID).Scan(&deliveredAt, &readAt); err != nil {
+			t.Fatalf("query message_deliveries for message %d: %v", messageID, err)
+		}
+		if !deliveredAt.Valid || !readAt.Valid {
+			t.Fatalf("expected delivered/read timestamps for message %d, got delivered=%v read=%v", messageID, deliveredAt.Valid, readAt.Valid)
+		}
+	}
+
+	var count int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM message_deliveries WHERE message_id = ?`, charlieMessageID).Scan(&count); err != nil {
+		t.Fatalf("query unrelated message_deliveries: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected unrelated thread to remain unread, got %d delivery rows", count)
+	}
+}
+
 func TestMessagesDeliveredRoute_AdditiveReceiptEndpoint(t *testing.T) {
 	if err := auth.ConfigureJWT("test-secret-123456"); err != nil {
 		t.Fatal(err)

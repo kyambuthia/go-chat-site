@@ -349,6 +349,82 @@ func (h *MessagesHandler) MarkRead(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (h *MessagesHandler) MarkThreadRead(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		web.JSONError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		return
+	}
+
+	if h.Messaging == nil {
+		web.JSONError(w, errors.New("messaging sync unavailable"), http.StatusServiceUnavailable)
+		return
+	}
+
+	var req struct {
+		WithUserID int `json:"with_user_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
+		return
+	}
+	if req.WithUserID <= 0 {
+		web.JSONError(w, errors.New("invalid request body"), http.StatusBadRequest)
+		return
+	}
+
+	const pageLimit = 200
+	beforeID := int64(0)
+	unreadMessages := make([]coremsg.StoredMessage, 0)
+
+	for {
+		var page []coremsg.StoredMessage
+		var err error
+		if beforeID > 0 {
+			page, err = h.Messaging.ListInboxBeforeWithUser(r.Context(), userID, req.WithUserID, beforeID, pageLimit)
+		} else {
+			page, err = h.Messaging.ListInboxWithUser(r.Context(), userID, req.WithUserID, pageLimit)
+		}
+		if err != nil {
+			web.JSONError(w, err, http.StatusInternalServerError)
+			return
+		}
+		if len(page) == 0 {
+			break
+		}
+
+		for _, msg := range page {
+			if msg.ReadAt == nil {
+				unreadMessages = append(unreadMessages, msg)
+			}
+		}
+
+		if len(page) < pageLimit {
+			break
+		}
+		beforeID = page[len(page)-1].ID
+	}
+
+	for _, msg := range unreadMessages {
+		if err := h.Messaging.MarkReadForRecipient(r.Context(), userID, msg.ID); err != nil {
+			if errors.Is(err, coremsg.ErrMessageNotFound) {
+				web.JSONError(w, errors.New("message not found"), http.StatusNotFound)
+				return
+			}
+			web.JSONError(w, err, http.StatusInternalServerError)
+			return
+		}
+		h.tryPushReceipt(msg.FromUserID, coremsg.KindMessageRead, msg.ID)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 func (h *MessagesHandler) MarkDelivered(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		web.JSONError(w, errors.New("method not allowed"), http.StatusMethodNotAllowed)

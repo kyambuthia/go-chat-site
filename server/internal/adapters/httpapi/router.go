@@ -103,6 +103,8 @@ func NewRouter(dataStore store.APIStore, hub *wsrelay.Hub) http.Handler {
 	mux.Handle("/api/messages/sync", authMiddleware(http.HandlerFunc(messagesHandler.GetSync)))
 	mux.Handle("/api/messaging/sync", authMiddleware(http.HandlerFunc(messagesHandler.GetSync)))
 	mux.Handle("/api/messages/read", authMiddleware(http.HandlerFunc(messagesHandler.MarkRead)))
+	mux.Handle("/api/messages/read-thread", authMiddleware(http.HandlerFunc(messagesHandler.MarkThreadRead)))
+	mux.Handle("/api/messaging/read-thread", authMiddleware(http.HandlerFunc(messagesHandler.MarkThreadRead)))
 	mux.Handle("/api/messages/delivered", authMiddleware(http.HandlerFunc(messagesHandler.MarkDelivered)))
 	mux.Handle("/api/devices", authMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
