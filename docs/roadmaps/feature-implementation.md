@@ -171,7 +171,7 @@ Current repo status:
 - undecryptable encrypted messages now render explicit placeholder UX, and ciphertext-only thread previews are driven by metadata instead of fake plaintext bodies
 
 Main remaining work before Phase 4 can be treated as fully complete:
-- tighten the broader device identity UX around enrollment, recovery expectations, and multi-device behavior
+- tighten the broader device identity UX around enrollment, recovery/import-export expectations, and multi-device behavior
 - move beyond the current bootstrap envelope path toward the full X3DH + Double Ratchet target described in the ADR
 
 ## Phase 5: P2P Messaging Transport

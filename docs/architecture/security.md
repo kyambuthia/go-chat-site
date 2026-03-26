@@ -56,8 +56,8 @@ Implemented in current codebase:
   - metadata-driven thread summaries/unread logic via `content_kind`
   - optional server plaintext suppression for encrypted rows via `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=false`
 - Next steps:
-  - validate ciphertext-only storage as the default rollout mode
-  - reduce remaining compatibility reliance on locally cached sender plaintext
+  - add explicit private-key recovery/import/export UX so users understand which device records this browser can actually decrypt for
+  - reduce remaining compatibility reliance on locally cached sender plaintext in edge cases
   - follow `docs/architecture/decisions/e2ee-1to1-protocol.md` for the full X3DH + Double Ratchet target
 
 ### 5. Payment / Ledger Fraud and Compliance Exposure

@@ -22,9 +22,9 @@ What already exists:
 - sender-side local content cache so ciphertext-only outbox rows can still render after reload
 
 What does not exist yet:
-- production-default ciphertext-only storage rollout
 - client-side ratchet/session state beyond the current bootstrap encrypted-envelope path
 - a completed migration/retention decision for legacy plaintext rows
+- polished private-key recovery/import-export UX for enrolled devices
 
 ## Target State
 For encrypted 1:1 conversations, the durable store should persist opaque ciphertext envelopes plus the minimum metadata needed for:
@@ -112,7 +112,8 @@ Current repo status:
 - thread summaries and unread filtering already use `content_kind` metadata
 - ciphertext-only thread summaries now expose explicit encrypted metadata instead of synthesizing generic plaintext preview bodies
 - devices that cannot decrypt encrypted messages now render explicit actionless placeholders that direct the user back to an enrolled device
-- remaining work is mainly around broader device UX and the longer-term ratchet/session rollout
+- the account UI now exposes whether this browser actually has the local private bundle for each enrolled device
+- remaining work is mainly around broader device UX, private-key recovery/import-export, and the longer-term ratchet/session rollout
 
 ### Stage 4: Legacy Plaintext Retirement
 - stop writing plaintext for E2EE-capable threads
