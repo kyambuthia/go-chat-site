@@ -92,6 +92,20 @@ function decodeMicroPayload(body) {
   }
 }
 
+function canUseMessageBodyForDisplay(message) {
+  return !message?.ciphertext || message.sent || message.decrypted;
+}
+
+function getDisplayedMessageBody(message, fallback = "No messages yet") {
+  if (!message) {
+    return fallback;
+  }
+  if (canUseMessageBodyForDisplay(message)) {
+    return message.body || fallback;
+  }
+  return "Encrypted message";
+}
+
 function getPaymentRequestMeta(message) {
   if (message?.paymentRequestId && Number.isFinite(Number(message.paymentAmount))) {
     return {
@@ -100,6 +114,10 @@ function getPaymentRequestMeta(message) {
       status: message.paymentStatus || "pending",
       error: message.paymentError || "",
     };
+  }
+
+  if (!canUseMessageBodyForDisplay(message)) {
+    return null;
   }
 
   const payload = decodeMicroPayload(message?.body);
@@ -121,6 +139,9 @@ function getPaymentRequestMeta(message) {
 }
 
 function getPaymentUpdateMeta(message) {
+  if (!canUseMessageBodyForDisplay(message)) {
+    return null;
+  }
   const payload = decodeMicroPayload(message?.body);
   if (!payload || payload.kind !== "payment_request_update" || !payload.requestId) {
     return null;
@@ -298,7 +319,7 @@ function buildLocalThreadSummary(contact, message, unreadCount = 0) {
       id: message.serverID || message.id,
       from_user_id: message.sent ? null : contact.id,
       to_user_id: message.sent ? contact.id : null,
-      body: message.body,
+      body: getDisplayedMessageBody(message),
       created_at: message.createdAt,
     },
   };
@@ -314,7 +335,7 @@ function buildThreadSummaryLastMessage(contact, message, fallbackUserID = null) 
     id: message.serverID || message.id,
     from_user_id: message.sent ? null : counterpartyUserID,
     to_user_id: message.sent ? counterpartyUserID : null,
-    body: message.body,
+    body: getDisplayedMessageBody(message),
     created_at: message.createdAt,
   };
 }
@@ -372,10 +393,11 @@ function getMaxThreadSummaryMessageID(summaries) {
   }, 0);
 }
 
-function summarizePreviewBody(body) {
-  const payload = decodeMicroPayload(body);
+function summarizePreviewBody(message) {
+  const displayedBody = getDisplayedMessageBody(message);
+  const payload = decodeMicroPayload(displayedBody);
   if (!payload) {
-    return body || "No messages yet";
+    return displayedBody || "No messages yet";
   }
   if (payload.kind === "payment_request" && Number.isFinite(Number(payload.amount))) {
     return `Requested ${formatMoney(payload.amount)}`;
@@ -383,14 +405,14 @@ function summarizePreviewBody(body) {
   if (payload.kind === "payment_request_update") {
     return payload.status === "paid" ? "Payment marked paid" : "Payment update";
   }
-  return body || "No messages yet";
+  return displayedBody || "No messages yet";
 }
 
 function formatThreadPreview(summary) {
   if (!summary?.last_message) {
     return "No messages yet";
   }
-  const preview = summarizePreviewBody(summary.last_message.body);
+  const preview = summarizePreviewBody(summary.last_message);
   if (Number(summary.last_message.from_user_id) === Number(summary.user_id)) {
     return preview;
   }
@@ -604,7 +626,7 @@ function ChatWindow({
                   {paymentUpdate.status === "paid" ? "Payment marked paid" : "Payment update"}
                 </div>
               ) : (
-                <div className="message-body">{msg.body}</div>
+                <div className="message-body">{getDisplayedMessageBody(msg, "Encrypted message")}</div>
               )}
 
               <div className="message-meta">
@@ -1567,7 +1589,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
                   id: normalized.serverID || normalized.id,
                   from_user_id: existing.user_id,
                   to_user_id: null,
-                  body: normalized.body,
+                  body: getDisplayedMessageBody(normalized),
                   created_at: normalized.createdAt,
                 },
               },
