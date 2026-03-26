@@ -18,6 +18,11 @@ import {
   formatPrekeysForTextarea,
   generateDeviceIdentityBundle,
 } from "../lib/deviceIdentity.js";
+import {
+  listLocalDeviceBundleIDs,
+  removeLocalDeviceBundle,
+  saveLocalDeviceBundle,
+} from "../lib/deviceKeyStore.js";
 import SendMoneyForm from "./SendMoneyForm";
 
 const emptyDeviceForm = () => ({
@@ -79,6 +84,8 @@ export default function AccountPage({ handleLogout }) {
   const [sessionStatus, setSessionStatus] = useState({ type: "", message: "" });
   const [deviceForm, setDeviceForm] = useState(emptyDeviceForm);
   const [deviceStatus, setDeviceStatus] = useState({ type: "", message: "" });
+  const [pendingLocalBundle, setPendingLocalBundle] = useState(null);
+  const [localBundleDeviceIDs, setLocalBundleDeviceIDs] = useState([]);
   const [publishInputs, setPublishInputs] = useState({});
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingDevice, setSavingDevice] = useState(false);
@@ -110,6 +117,7 @@ export default function AccountPage({ handleLogout }) {
         setTransfers(transfersResponse || []);
         setSessions(sessionsResponse || []);
         setDevices(devicesResponse || []);
+        setLocalBundleDeviceIDs(listLocalDeviceBundleIDs());
         setProfileForm({
           display_name: userResponse?.display_name || "",
           avatar_url: userResponse?.avatar_url || "",
@@ -149,6 +157,7 @@ export default function AccountPage({ handleLogout }) {
   const refreshDevices = async () => {
     const deviceResponse = await getDevices();
     setDevices(deviceResponse || []);
+    setLocalBundleDeviceIDs(listLocalDeviceBundleIDs());
   };
 
   const handleProfileChange = (event) => {
@@ -158,6 +167,9 @@ export default function AccountPage({ handleLogout }) {
 
   const handleDeviceFormChange = (event) => {
     const { name, value } = event.target;
+    if (name !== "label" && pendingLocalBundle) {
+      setPendingLocalBundle(null);
+    }
     setDeviceForm((current) => ({ ...current, [name]: value }));
   };
 
@@ -165,14 +177,15 @@ export default function AccountPage({ handleLogout }) {
     setPublishInputs((current) => ({ ...current, [deviceID]: value }));
   };
 
-  const handleGenerateDeviceBundle = () => {
+  const handleGenerateDeviceBundle = async () => {
     setGeneratingBundle(true);
     setDeviceStatus({ type: "", message: "" });
 
     try {
-      const bundle = generateDeviceIdentityBundle({
+      const bundle = await generateDeviceIdentityBundle({
         algorithm: deviceForm.algorithm.trim() || DEFAULT_DEVICE_ALGORITHM,
       });
+      setPendingLocalBundle(bundle.private_bundle);
       setDeviceForm((current) => ({
         ...current,
         algorithm: bundle.algorithm,
@@ -182,7 +195,7 @@ export default function AccountPage({ handleLogout }) {
         signed_prekey_signature: bundle.signed_prekey_signature,
         prekeys_text: formatPrekeysForTextarea(bundle.prekeys),
       }));
-      setDeviceStatus({ type: "success", message: "Generated a local device bundle. Review it, then register the device." });
+      setDeviceStatus({ type: "success", message: "Generated a local device bundle. Register the device to save its private keys in this browser." });
     } catch (err) {
       setDeviceStatus({ type: "error", message: err.message || "Failed to generate a local device bundle." });
     } finally {
@@ -239,7 +252,7 @@ export default function AccountPage({ handleLogout }) {
 
     try {
       const prekeys = parsePrekeysInput(deviceForm.prekeys_text);
-      await registerDeviceIdentity({
+      const device = await registerDeviceIdentity({
         label: deviceForm.label.trim(),
         algorithm: deviceForm.algorithm.trim() || DEFAULT_DEVICE_ALGORITHM,
         identity_key: deviceForm.identity_key.trim(),
@@ -248,9 +261,22 @@ export default function AccountPage({ handleLogout }) {
         signed_prekey_signature: deviceForm.signed_prekey_signature.trim(),
         prekeys,
       });
+      if (pendingLocalBundle && device?.id) {
+        saveLocalDeviceBundle({
+          userID: user?.id || 0,
+          deviceID: device.id,
+          bundle: pendingLocalBundle,
+        });
+      }
       await refreshDevices();
       setDeviceForm(emptyDeviceForm());
-      setDeviceStatus({ type: "success", message: "Device identity registered." });
+      setPendingLocalBundle(null);
+      setDeviceStatus({
+        type: "success",
+        message: pendingLocalBundle && device?.id
+          ? "Device identity registered and private keys saved locally."
+          : "Device identity registered.",
+      });
     } catch (err) {
       setDeviceStatus({ type: "error", message: err.message || "Failed to register device identity." });
     } finally {
@@ -282,6 +308,7 @@ export default function AccountPage({ handleLogout }) {
 
     try {
       await revokeDeviceIdentity(deviceID);
+      removeLocalDeviceBundle(deviceID);
       await refreshDevices();
       setDeviceStatus({ type: "success", message: "Device identity revoked." });
     } catch (err) {
@@ -541,6 +568,7 @@ export default function AccountPage({ handleLogout }) {
                   <div className="session-title-row">
                     <strong>{device.label || "This device"}</strong>
                     {device.current_session && <span className="session-badge">Current Session</span>}
+                    {localBundleDeviceIDs.includes(device.id) && <span className="session-badge">Local Keys</span>}
                     <span className={`session-badge ${device.state === "revoked" ? "device-badge-revoked" : ""}`}>
                       {device.state}
                     </span>

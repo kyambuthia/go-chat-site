@@ -144,11 +144,13 @@ Data work:
 
 Client work:
 - manage device enrollment and key publication
+- generate and persist local device private bundles in-browser
 - separate plaintext composer state from transport payload generation
 
 Exit criteria:
 - a user can register at least one device identity
 - key material can be rotated and revoked without breaking account identity
+- the client can produce encrypted envelopes from published device bundles while preserving current delivery semantics
 - the selected encryption protocol is documented and test-covered at the integration boundary
 
 ## Phase 5: P2P Messaging Transport

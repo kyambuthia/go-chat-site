@@ -22,10 +22,12 @@ import {
 } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import {
+  buildEncryptedEnvelope,
   buildOpaqueEnvelopeScaffold,
   selectPreferredActiveDevice,
   selectPreferredRecipientDevice,
 } from "../lib/deviceIdentity.js";
+import { getLocalDeviceBundle } from "../lib/deviceKeyStore.js";
 
 const MICROAPP_PREFIX = "__microapp_v1__:";
 
@@ -400,7 +402,7 @@ function ChatWindow({
     setRequestError("");
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     const trimmed = newMessage.trim();
     if (!trimmed || !selectedContact) {
       return;
@@ -411,22 +413,26 @@ function ChatWindow({
       return;
     }
 
-    const message = {
-      id: Date.now(),
-      type: "direct_message",
-      to: selectedContact.username,
-      body: trimmed,
-      createdAt: new Date().toISOString(),
-      ...buildEnvelopeFields(trimmed),
-    };
+    try {
+      const message = {
+        id: Date.now(),
+        type: "direct_message",
+        to: selectedContact.username,
+        body: trimmed,
+        createdAt: new Date().toISOString(),
+        ...(await buildEnvelopeFields(trimmed)),
+      };
 
-    ws.send(JSON.stringify(message));
-    onSendMessage(message);
-    setComposerError("");
-    setNewMessage("");
+      ws.send(JSON.stringify(message));
+      onSendMessage(message);
+      setComposerError("");
+      setNewMessage("");
+    } catch (err) {
+      setComposerError(err?.message || "Failed to prepare encrypted message.");
+    }
   };
 
-  const handleSendPaymentRequest = () => {
+  const handleSendPaymentRequest = async () => {
     setRequestError("");
 
     if (!selectedContact) {
@@ -451,21 +457,25 @@ function ChatWindow({
     };
     const body = encodeMicroPayload(payload);
 
-    const message = addPaymentRequestMetadata({
-      id: Date.now() + 1,
-      type: "direct_message",
-      to: selectedContact.username,
-      body,
-      createdAt: new Date().toISOString(),
-      paymentStatus: "pending",
-      paymentError: "",
-      ...buildEnvelopeFields(body),
-    });
+    try {
+      const message = addPaymentRequestMetadata({
+        id: Date.now() + 1,
+        type: "direct_message",
+        to: selectedContact.username,
+        body,
+        createdAt: new Date().toISOString(),
+        paymentStatus: "pending",
+        paymentError: "",
+        ...(await buildEnvelopeFields(body)),
+      });
 
-    ws.send(JSON.stringify(message));
-    onSendMessage(message);
-    setRequestAmount("");
-    closeMicroApps();
+      ws.send(JSON.stringify(message));
+      onSendMessage(message);
+      setRequestAmount("");
+      closeMicroApps();
+    } catch (err) {
+      setRequestError(err?.message || "Failed to prepare encrypted payment request.");
+    }
   };
 
   const handleSettleRequestClick = async (msg) => {
@@ -1513,7 +1523,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     setSelectedContact(contact);
   };
 
-  const buildEnvelopeFields = (body) => {
+  const buildEnvelopeFields = async (body) => {
     const senderDeviceID = Number(currentDeviceIdentity?.id);
     const recipientDeviceID = Number(recipientDeviceIdentity?.id);
 
@@ -1524,14 +1534,24 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       return {};
     }
 
+    const senderPrivateBundle = getLocalDeviceBundle(senderDeviceID);
+
     try {
+      if (senderPrivateBundle) {
+        return await buildEncryptedEnvelope({
+          body,
+          senderDevice: currentDeviceIdentity,
+          recipientDevice: recipientDeviceIdentity,
+          senderPrivateBundle,
+        });
+      }
       return buildOpaqueEnvelopeScaffold({
         body,
         senderDeviceID,
         recipientDeviceID,
       });
     } catch (err) {
-      console.error("Failed to build envelope scaffold:", err);
+      console.error("Failed to build envelope metadata:", err);
       return {};
     }
   };
@@ -1600,12 +1620,13 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           requestId: paymentRequest.requestId,
           status: "paid",
         });
+        const envelopeFields = await buildEnvelopeFields(updateBody);
         ws.send(JSON.stringify({
           id: Date.now(),
           type: "direct_message",
           to: message.from,
           body: updateBody,
-          ...buildEnvelopeFields(updateBody),
+          ...envelopeFields,
         }));
       }
     } catch (err) {
