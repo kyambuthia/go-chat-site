@@ -16,6 +16,7 @@ This repository is evolving from a centralized chat + wallet demo into a securit
 - `docs/overview/course-correction.md`: course-correction brief and the top-level product direction
 - `docs/architecture/decisions/architecture-boundaries.md`: adopted core vs adapter boundary decision
 - `docs/roadmaps/feature-implementation.md`: concrete feature roadmap from the current repo state
+- `docs/TODO.md`: current incomplete feature backlog
 
 ## Architecture
 - `docs/architecture/api.md`: current API compatibility and future versioning direction
