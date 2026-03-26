@@ -15,6 +15,7 @@ Implemented today:
 - per-IP/per-user auth quotas, login lockout/backoff, and structured auth/rate-limit logging
 - JWT-authenticated HTTP and WebSocket sessions
 - device identity registration, directory, rotation/revocation, and manual account UI management
+- 1:1 E2EE protocol ADR and ciphertext-at-rest migration plan
 - contacts and invite workflows
 - centralized 1:1 WebSocket relay
 - durable message persistence on the backend, plus inbox/outbox/read/delivered APIs

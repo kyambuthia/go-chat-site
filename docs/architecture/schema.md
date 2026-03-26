@@ -52,6 +52,7 @@ Why:
 Notes:
 - ciphertext storage is expected if E2EE is implemented
 - server stores plaintext only until E2EE rollout; migration target is ciphertext-at-rest with metadata minimization
+- see `docs/architecture/ciphertext-at-rest.md` for the staged rollout plan
 
 ## Target Marketplace Data Model (Planned)
 - `marketplace_listings`

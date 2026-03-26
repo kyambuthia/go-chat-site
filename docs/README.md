@@ -19,10 +19,12 @@ This repository is evolving from a centralized chat + wallet demo into a securit
 
 ## Architecture
 - `docs/architecture/api.md`: current API compatibility and future versioning direction
+- `docs/architecture/ciphertext-at-rest.md`: staged migration plan from plaintext persistence to encrypted durable storage
 - `docs/architecture/schema.md`: current SQLite schema concepts and target data model evolution
 - `docs/architecture/runtime.md`: runtime flows (HTTP, WS relay today; P2P later)
 - `docs/architecture/security.md`: security scaffolding, threat model, and hardening plan
 - `docs/architecture/decisions/architecture-boundaries.md`: architectural boundary decision record
+- `docs/architecture/decisions/e2ee-1to1-protocol.md`: 1:1 E2EE protocol baseline for device-key rollout
 - `docs/architecture/decisions/ws-shim-retirement.md`: decision record for removing the websocket compatibility shim
 
 ## Roadmaps

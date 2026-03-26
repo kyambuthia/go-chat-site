@@ -42,6 +42,7 @@ Deliverables:
 - device identity storage + APIs
 - key rotation and revocation semantics
 - protocol decision ADR: X3DH + Double Ratchet for 1:1, MLS revisited for groups
+- ciphertext-at-rest rollout plan for durable encrypted messaging
 
 ## Phase 4: P2P Messaging Transport (Experimental Adapter)
 Goals:

@@ -50,8 +50,9 @@ Implemented in current codebase:
 - Risk: server-visible plaintext messages in centralized relay architecture
 - Current mitigation: transport auth only (no E2EE)
 - Next steps:
-  - add device key infrastructure
-  - protocol direction selected: X3DH + Double Ratchet for 1:1 messaging; MLS deferred for group messaging
+  - add client-side encrypted envelope support on top of the existing device-key APIs
+  - follow `docs/architecture/decisions/e2ee-1to1-protocol.md` for 1:1 protocol direction
+  - follow `docs/architecture/ciphertext-at-rest.md` for durable storage migration
 
 ### 5. Payment / Ledger Fraud and Compliance Exposure
 - Risk: fund theft, fake disputes, sanctions/KYC violations once real rails exist
