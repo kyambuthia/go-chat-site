@@ -41,9 +41,11 @@ func (a *Adapter) RecordClientMessageCorrelation(ctx context.Context, c coremsg.
 
 func (a *Adapter) SaveDirectMessage(ctx context.Context, msg coremsg.StoredMessage) (coremsg.StoredMessage, error) {
 	result, err := a.DB.ExecContext(ctx, `
-		INSERT INTO messages (from_user_id, to_user_id, body)
-		VALUES (?, ?, ?)
-	`, msg.FromUserID, msg.ToUserID, msg.Body)
+		INSERT INTO messages (
+			from_user_id, to_user_id, body, ciphertext, encryption_version, sender_device_id, recipient_device_id
+		)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, msg.FromUserID, msg.ToUserID, msg.Body, msg.Ciphertext, msg.EnvelopeVersion, msg.SenderDeviceID, msg.RecipientDeviceID)
 	if err != nil {
 		return coremsg.StoredMessage{}, err
 	}
@@ -109,7 +111,8 @@ func (a *Adapter) ListOutboxBefore(ctx context.Context, userID int, beforeID int
 
 func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
 	rows, err := a.DB.QueryContext(ctx, `
-		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
+		       m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at, mc.client_message_id,
 		       CASE
 		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
@@ -143,7 +146,8 @@ func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64
 
 func (a *Adapter) listOutboxQuery(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	query := `
-		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
+		       m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at, mc.client_message_id,
 		       CASE
 		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
@@ -229,7 +233,8 @@ func (a *Adapter) ListUnreadInboxAfterWithUser(ctx context.Context, userID int, 
 
 func (a *Adapter) listInboxAfterQuery(ctx context.Context, userID int, withUserID int, afterID int64, limit int, unreadOnly bool) ([]coremsg.StoredMessage, error) {
 	query := `
-		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
+		       m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
@@ -269,7 +274,8 @@ func (a *Adapter) listInboxAfterQuery(ctx context.Context, userID int, withUserI
 
 func (a *Adapter) GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (coremsg.StoredMessage, error) {
 	row := a.DB.QueryRowContext(ctx, `
-		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
+		       m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
@@ -386,7 +392,8 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 
 func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int, beforeID int64, limit int, unreadOnly bool) ([]coremsg.StoredMessage, error) {
 	query := `
-		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
+		       m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
@@ -430,7 +437,8 @@ func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int
 
 func (a *Adapter) getByID(ctx context.Context, id int64) (coremsg.StoredMessage, error) {
 	row := a.DB.QueryRowContext(ctx, `
-		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.created_at,
+		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
+		       m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at, mc.client_message_id,
 		       CASE
 		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
@@ -451,12 +459,40 @@ type scanner interface {
 func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 	var msg coremsg.StoredMessage
 	var createdAt time.Time
+	var ciphertext sql.NullString
+	var encryptionVersion sql.NullString
+	var senderDeviceID sql.NullInt64
+	var recipientDeviceID sql.NullInt64
 	var deliveredAt sql.NullTime
 	var readAt sql.NullTime
-	if err := s.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Body, &createdAt, &deliveredAt, &readAt); err != nil {
+	if err := s.Scan(
+		&msg.ID,
+		&msg.FromUserID,
+		&msg.ToUserID,
+		&msg.Body,
+		&ciphertext,
+		&encryptionVersion,
+		&senderDeviceID,
+		&recipientDeviceID,
+		&createdAt,
+		&deliveredAt,
+		&readAt,
+	); err != nil {
 		return coremsg.StoredMessage{}, err
 	}
 	msg.CreatedAt = createdAt
+	if ciphertext.Valid {
+		msg.Ciphertext = ciphertext.String
+	}
+	if encryptionVersion.Valid {
+		msg.EnvelopeVersion = encryptionVersion.String
+	}
+	if senderDeviceID.Valid {
+		msg.SenderDeviceID = senderDeviceID.Int64
+	}
+	if recipientDeviceID.Valid {
+		msg.RecipientDeviceID = recipientDeviceID.Int64
+	}
 	if deliveredAt.Valid {
 		t := deliveredAt.Time
 		msg.DeliveredAt = &t
@@ -471,14 +507,44 @@ func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
 	var msg coremsg.StoredMessage
 	var createdAt time.Time
+	var ciphertext sql.NullString
+	var encryptionVersion sql.NullString
+	var senderDeviceID sql.NullInt64
+	var recipientDeviceID sql.NullInt64
 	var deliveredAt sql.NullTime
 	var readAt sql.NullTime
 	var clientMessageID sql.NullInt64
 	var deliveryFailed int
-	if err := s.Scan(&msg.ID, &msg.FromUserID, &msg.ToUserID, &msg.Body, &createdAt, &deliveredAt, &readAt, &clientMessageID, &deliveryFailed); err != nil {
+	if err := s.Scan(
+		&msg.ID,
+		&msg.FromUserID,
+		&msg.ToUserID,
+		&msg.Body,
+		&ciphertext,
+		&encryptionVersion,
+		&senderDeviceID,
+		&recipientDeviceID,
+		&createdAt,
+		&deliveredAt,
+		&readAt,
+		&clientMessageID,
+		&deliveryFailed,
+	); err != nil {
 		return coremsg.StoredMessage{}, err
 	}
 	msg.CreatedAt = createdAt
+	if ciphertext.Valid {
+		msg.Ciphertext = ciphertext.String
+	}
+	if encryptionVersion.Valid {
+		msg.EnvelopeVersion = encryptionVersion.String
+	}
+	if senderDeviceID.Valid {
+		msg.SenderDeviceID = senderDeviceID.Int64
+	}
+	if recipientDeviceID.Valid {
+		msg.RecipientDeviceID = recipientDeviceID.Int64
+	}
 	if deliveredAt.Valid {
 		t := deliveredAt.Time
 		msg.DeliveredAt = &t

@@ -240,15 +240,25 @@ func TestPersistenceService_StoreDirectMessage_DelegatesAndSetsDefaults(t *testi
 	svc := NewPersistenceService(repo)
 
 	got, err := svc.StoreDirectMessage(context.Background(), PersistDirectMessageRequest{
-		FromUserID: 1,
-		ToUserID:   2,
-		Body:       "hello",
+		FromUserID:        1,
+		ToUserID:          2,
+		Body:              "hello",
+		Ciphertext:        "ciphertext-v1",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    11,
+		RecipientDeviceID: 22,
 	})
 	if err != nil {
 		t.Fatalf("StoreDirectMessage error: %v", err)
 	}
 	if repo.lastSave.FromUserID != 1 || repo.lastSave.ToUserID != 2 || repo.lastSave.Body != "hello" {
 		t.Fatalf("unexpected save payload: %+v", repo.lastSave)
+	}
+	if repo.lastSave.Ciphertext != "ciphertext-v1" || repo.lastSave.EnvelopeVersion != "x3dh-dr-v1" {
+		t.Fatalf("unexpected encrypted payload: %+v", repo.lastSave)
+	}
+	if repo.lastSave.SenderDeviceID != 11 || repo.lastSave.RecipientDeviceID != 22 {
+		t.Fatalf("unexpected device routing metadata: %+v", repo.lastSave)
 	}
 	if got.ID == 0 {
 		t.Fatal("expected persisted ID")

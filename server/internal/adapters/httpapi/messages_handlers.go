@@ -501,6 +501,18 @@ func storedMessagesToJSON(msgs []coremsg.StoredMessage) []map[string]any {
 			"body":         msg.Body,
 			"created_at":   msg.CreatedAt,
 		}
+		if msg.Ciphertext != "" {
+			item["ciphertext"] = msg.Ciphertext
+		}
+		if msg.EnvelopeVersion != "" {
+			item["encryption_version"] = msg.EnvelopeVersion
+		}
+		if msg.SenderDeviceID > 0 {
+			item["sender_device_id"] = msg.SenderDeviceID
+		}
+		if msg.RecipientDeviceID > 0 {
+			item["recipient_device_id"] = msg.RecipientDeviceID
+		}
 		if msg.ClientMessageID > 0 {
 			item["client_message_id"] = msg.ClientMessageID
 		}

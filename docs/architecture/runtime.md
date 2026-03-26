@@ -28,6 +28,7 @@ flowchart LR
 4. Relay hub registers connected user.
 5. `direct_message` is forwarded only if recipient is online.
 6. Sender receives `message_ack` on success; `error` on offline recipient.
+7. When encrypted payload fields are present, the relay treats them as opaque message envelope data and forwards them without interpretation.
 
 ## Target (Incremental, Hybrid Runtime)
 ```mermaid
@@ -48,4 +49,5 @@ flowchart LR
 - Relay remains available as fallback even after P2P adapters exist.
 - HTTP API remains the orchestration surface for identity, contacts, marketplace, and ledger workflows.
 - Messaging transport is an adapter concern; messaging semantics belong in core.
+- Encrypted message envelopes should preserve the current receipt/sync model while minimizing server-visible content.
 - External payment rails are adapters, not core business logic.

@@ -68,6 +68,43 @@ func TestAdapter_SaveDirectMessage_AndListInbox(t *testing.T) {
 	}
 }
 
+func TestAdapter_SaveDirectMessage_PersistsEnvelopeMetadata(t *testing.T) {
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID:        aliceID,
+		ToUserID:          bobID,
+		Body:              "",
+		Ciphertext:        "opaque-envelope",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    101,
+		RecipientDeviceID: 202,
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage error: %v", err)
+	}
+
+	inbox, err := a.ListInbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListInbox error: %v", err)
+	}
+	if len(inbox) != 1 {
+		t.Fatalf("expected 1 inbox message, got %d", len(inbox))
+	}
+	if inbox[0].ID != saved.ID {
+		t.Fatalf("message id = %d, want %d", inbox[0].ID, saved.ID)
+	}
+	if inbox[0].Ciphertext != "opaque-envelope" || inbox[0].EnvelopeVersion != "x3dh-dr-v1" {
+		t.Fatalf("unexpected encrypted payload: %+v", inbox[0])
+	}
+	if inbox[0].SenderDeviceID != 101 || inbox[0].RecipientDeviceID != 202 {
+		t.Fatalf("unexpected device metadata: %+v", inbox[0])
+	}
+}
+
 func TestAdapter_MarkDeliveredAndRead_UpsertsMessageDeliveries(t *testing.T) {
 	s := newMessagingStore(t)
 	aliceID := seedUser(t, s, "alice")

@@ -365,6 +365,51 @@ func TestMessagesHandler_GetOutbox_EmitsDeliveryFailedFlagWhenPresent(t *testing
 	}
 }
 
+func TestMessagesHandler_GetInbox_ExposesEnvelopeMetadataWhenPresent(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	svc := &fakeMessagingPersistence{
+		listResp: []coremsg.StoredMessage{{
+			ID:                10,
+			FromUserID:        1,
+			ToUserID:          2,
+			Body:              "",
+			Ciphertext:        "opaque-envelope",
+			EnvelopeVersion:   "x3dh-dr-v1",
+			SenderDeviceID:    91,
+			RecipientDeviceID: 92,
+			CreatedAt:         now,
+		}},
+	}
+	h := &MessagesHandler{Messaging: svc}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/messages/inbox", nil)
+	req = req.WithContext(auth.WithUserID(req.Context(), 2))
+	rr := httptest.NewRecorder()
+
+	h.GetInbox(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rr.Code, rr.Body.String())
+	}
+
+	var resp []map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got := resp[0]["ciphertext"].(string); got != "opaque-envelope" {
+		t.Fatalf("ciphertext = %q, want opaque-envelope", got)
+	}
+	if got := resp[0]["encryption_version"].(string); got != "x3dh-dr-v1" {
+		t.Fatalf("encryption_version = %q, want x3dh-dr-v1", got)
+	}
+	if got := int(resp[0]["sender_device_id"].(float64)); got != 91 {
+		t.Fatalf("sender_device_id = %d, want 91", got)
+	}
+	if got := int(resp[0]["recipient_device_id"].(float64)); got != 92 {
+		t.Fatalf("recipient_device_id = %d, want 92", got)
+	}
+}
+
 func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	delivered := now.Add(time.Minute)

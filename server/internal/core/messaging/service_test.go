@@ -23,11 +23,15 @@ func TestRelayService_SendDirect_ReturnsDeliveredReceipt(t *testing.T) {
 	svc := NewRelayService(tp)
 
 	receipt, err := svc.SendDirect(context.Background(), DirectSendRequest{
-		FromUserID: 1,
-		From:       "alice",
-		ToUserID:   2,
-		Body:       "hello",
-		MessageID:  44,
+		FromUserID:        1,
+		From:              "alice",
+		ToUserID:          2,
+		Body:              "hello",
+		Ciphertext:        "ciphertext-v1",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    41,
+		RecipientDeviceID: 52,
+		MessageID:         44,
 	})
 	if err != nil {
 		t.Fatalf("SendDirect returned error: %v", err)
@@ -251,11 +255,15 @@ func TestDurableRelayService_SendDirect_PersistsAndMarksDeliveredOnSuccess(t *te
 	svc := NewDurableRelayService(tp, ps)
 
 	receipt, err := svc.SendDirect(context.Background(), DirectSendRequest{
-		FromUserID: 1,
-		From:       "alice",
-		ToUserID:   2,
-		Body:       "hello",
-		MessageID:  44,
+		FromUserID:        1,
+		From:              "alice",
+		ToUserID:          2,
+		Body:              "hello",
+		Ciphertext:        "ciphertext-v1",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    41,
+		RecipientDeviceID: 52,
+		MessageID:         44,
 	})
 	if err != nil {
 		t.Fatalf("SendDirect returned error: %v", err)
@@ -269,11 +277,23 @@ func TestDurableRelayService_SendDirect_PersistsAndMarksDeliveredOnSuccess(t *te
 	if ps.lastStoreReq.FromUserID != 1 || ps.lastStoreReq.ToUserID != 2 || ps.lastStoreReq.Body != "hello" {
 		t.Fatalf("unexpected persistence store req: %+v", ps.lastStoreReq)
 	}
+	if ps.lastStoreReq.Ciphertext != "ciphertext-v1" || ps.lastStoreReq.EnvelopeVersion != "x3dh-dr-v1" {
+		t.Fatalf("unexpected encrypted store req: %+v", ps.lastStoreReq)
+	}
+	if ps.lastStoreReq.SenderDeviceID != 41 || ps.lastStoreReq.RecipientDeviceID != 52 {
+		t.Fatalf("unexpected device IDs in store req: %+v", ps.lastStoreReq)
+	}
 	if ps.lastMarkID != 123 {
 		t.Fatalf("mark delivered id = %d, want 123", ps.lastMarkID)
 	}
 	if tp.lastMsg.ID != 123 {
 		t.Fatalf("transport message id = %d, want 123", tp.lastMsg.ID)
+	}
+	if tp.lastMsg.Ciphertext != "ciphertext-v1" || tp.lastMsg.EnvelopeVersion != "x3dh-dr-v1" {
+		t.Fatalf("unexpected transport envelope: %+v", tp.lastMsg)
+	}
+	if tp.lastMsg.SenderDeviceID != 41 || tp.lastMsg.RecipientDeviceID != 52 {
+		t.Fatalf("unexpected transport device IDs: %+v", tp.lastMsg)
 	}
 }
 

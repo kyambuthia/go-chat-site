@@ -6,9 +6,13 @@ import (
 )
 
 type PersistDirectMessageRequest struct {
-	FromUserID int
-	ToUserID   int
-	Body       string
+	FromUserID        int
+	ToUserID          int
+	Body              string
+	Ciphertext        string
+	EnvelopeVersion   string
+	SenderDeviceID    int64
+	RecipientDeviceID int64
 }
 
 type MessageRepository interface {
@@ -73,9 +77,13 @@ func NewPersistenceService(repo MessageRepository) PersistenceService {
 
 func (s *persistenceService) StoreDirectMessage(ctx context.Context, req PersistDirectMessageRequest) (StoredMessage, error) {
 	return s.repo.SaveDirectMessage(ctx, StoredMessage{
-		FromUserID: req.FromUserID,
-		ToUserID:   req.ToUserID,
-		Body:       req.Body,
+		FromUserID:        req.FromUserID,
+		ToUserID:          req.ToUserID,
+		Body:              req.Body,
+		Ciphertext:        req.Ciphertext,
+		EnvelopeVersion:   req.EnvelopeVersion,
+		SenderDeviceID:    req.SenderDeviceID,
+		RecipientDeviceID: req.RecipientDeviceID,
 	})
 }
 

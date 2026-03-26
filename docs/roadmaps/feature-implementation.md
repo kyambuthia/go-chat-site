@@ -16,6 +16,7 @@ Implemented today:
 - JWT-authenticated HTTP and WebSocket sessions
 - device identity registration, directory, rotation/revocation, and manual account UI management
 - 1:1 E2EE protocol ADR and ciphertext-at-rest migration plan
+- additive encrypted message envelope fields and ciphertext/device-addressed storage scaffolding
 - contacts and invite workflows
 - centralized 1:1 WebSocket relay
 - durable message persistence on the backend, plus inbox/outbox/read/delivered APIs

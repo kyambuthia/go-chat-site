@@ -3,11 +3,15 @@ package messaging
 import "context"
 
 type DirectSendRequest struct {
-	FromUserID int
-	From       string
-	ToUserID   int
-	Body       string
-	MessageID  int64
+	FromUserID        int
+	From              string
+	ToUserID          int
+	Body              string
+	Ciphertext        string
+	EnvelopeVersion   string
+	SenderDeviceID    int64
+	RecipientDeviceID int64
+	MessageID         int64
 }
 
 type Service interface {
@@ -27,9 +31,13 @@ func NewRelayService(transport Transport) *RelayService {
 func (s *RelayService) SendDirect(ctx context.Context, req DirectSendRequest) (DeliveryReceipt, error) {
 	_ = ctx
 	ok := s.transport.SendDirect(req.ToUserID, Message{
-		Type: KindDirectMessage,
-		From: req.From,
-		Body: req.Body,
+		Type:              KindDirectMessage,
+		From:              req.From,
+		Body:              req.Body,
+		Ciphertext:        req.Ciphertext,
+		EnvelopeVersion:   req.EnvelopeVersion,
+		SenderDeviceID:    req.SenderDeviceID,
+		RecipientDeviceID: req.RecipientDeviceID,
 	})
 	if !ok {
 		return DeliveryReceipt{MessageID: req.MessageID, Delivered: false, Reason: "recipient_offline"}, nil
@@ -66,9 +74,13 @@ func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequ
 	if s.persistence != nil {
 		var err error
 		stored, err = s.persistence.StoreDirectMessage(ctx, PersistDirectMessageRequest{
-			FromUserID: req.FromUserID,
-			ToUserID:   req.ToUserID,
-			Body:       req.Body,
+			FromUserID:        req.FromUserID,
+			ToUserID:          req.ToUserID,
+			Body:              req.Body,
+			Ciphertext:        req.Ciphertext,
+			EnvelopeVersion:   req.EnvelopeVersion,
+			SenderDeviceID:    req.SenderDeviceID,
+			RecipientDeviceID: req.RecipientDeviceID,
 		})
 		if err != nil {
 			return DeliveryReceipt{}, err
@@ -77,10 +89,14 @@ func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequ
 	}
 
 	ok := s.transport.SendDirect(req.ToUserID, Message{
-		Type: KindDirectMessage,
-		ID:   storedID,
-		From: req.From,
-		Body: req.Body,
+		Type:              KindDirectMessage,
+		ID:                storedID,
+		From:              req.From,
+		Body:              req.Body,
+		Ciphertext:        req.Ciphertext,
+		EnvelopeVersion:   req.EnvelopeVersion,
+		SenderDeviceID:    req.SenderDeviceID,
+		RecipientDeviceID: req.RecipientDeviceID,
 	})
 	if s.correlation != nil && req.MessageID != 0 && storedID != 0 {
 		if err := s.correlation.RecordClientMessageCorrelation(ctx, ClientMessageCorrelation{
