@@ -13,13 +13,16 @@ import {
   revokeSession,
   updateMe,
 } from "../api";
+import {
+  DEFAULT_DEVICE_ALGORITHM,
+  formatPrekeysForTextarea,
+  generateDeviceIdentityBundle,
+} from "../lib/deviceIdentity.js";
 import SendMoneyForm from "./SendMoneyForm";
-
-const DEVICE_ALGORITHM = "x3dh-ed25519-x25519-v1";
 
 const emptyDeviceForm = () => ({
   label: "",
-  algorithm: DEVICE_ALGORITHM,
+  algorithm: DEFAULT_DEVICE_ALGORITHM,
   identity_key: "",
   signed_prekey_id: "",
   signed_prekey: "",
@@ -79,6 +82,7 @@ export default function AccountPage({ handleLogout }) {
   const [publishInputs, setPublishInputs] = useState({});
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingDevice, setSavingDevice] = useState(false);
+  const [generatingBundle, setGeneratingBundle] = useState(false);
   const [revokingSessionID, setRevokingSessionID] = useState(null);
   const [revokingDeviceID, setRevokingDeviceID] = useState(null);
   const [publishingDeviceID, setPublishingDeviceID] = useState(null);
@@ -161,6 +165,31 @@ export default function AccountPage({ handleLogout }) {
     setPublishInputs((current) => ({ ...current, [deviceID]: value }));
   };
 
+  const handleGenerateDeviceBundle = () => {
+    setGeneratingBundle(true);
+    setDeviceStatus({ type: "", message: "" });
+
+    try {
+      const bundle = generateDeviceIdentityBundle({
+        algorithm: deviceForm.algorithm.trim() || DEFAULT_DEVICE_ALGORITHM,
+      });
+      setDeviceForm((current) => ({
+        ...current,
+        algorithm: bundle.algorithm,
+        identity_key: bundle.identity_key,
+        signed_prekey_id: String(bundle.signed_prekey_id),
+        signed_prekey: bundle.signed_prekey,
+        signed_prekey_signature: bundle.signed_prekey_signature,
+        prekeys_text: formatPrekeysForTextarea(bundle.prekeys),
+      }));
+      setDeviceStatus({ type: "success", message: "Generated a local device bundle. Review it, then register the device." });
+    } catch (err) {
+      setDeviceStatus({ type: "error", message: err.message || "Failed to generate a local device bundle." });
+    } finally {
+      setGeneratingBundle(false);
+    }
+  };
+
   const handleProfileSubmit = async (event) => {
     event.preventDefault();
     setSavingProfile(true);
@@ -212,7 +241,7 @@ export default function AccountPage({ handleLogout }) {
       const prekeys = parsePrekeysInput(deviceForm.prekeys_text);
       await registerDeviceIdentity({
         label: deviceForm.label.trim(),
-        algorithm: deviceForm.algorithm.trim() || DEVICE_ALGORITHM,
+        algorithm: deviceForm.algorithm.trim() || DEFAULT_DEVICE_ALGORITHM,
         identity_key: deviceForm.identity_key.trim(),
         signed_prekey_id: Number(deviceForm.signed_prekey_id),
         signed_prekey: deviceForm.signed_prekey.trim(),
@@ -399,6 +428,16 @@ export default function AccountPage({ handleLogout }) {
           </div>
         </div>
         <form className="device-form" onSubmit={handleRegisterDevice}>
+          <div className="profile-actions">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handleGenerateDeviceBundle}
+              disabled={savingDevice || generatingBundle}
+            >
+              {generatingBundle ? "Generating..." : "Generate Local Bundle"}
+            </button>
+          </div>
           <div className="form-group">
             <label htmlFor="device_label">Label</label>
             <input

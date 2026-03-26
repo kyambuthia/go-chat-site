@@ -1,5 +1,17 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { getContacts, getInbox, getMessageThreads, getOutbox, markMessageDelivered, markMessageRead, markThreadRead, sendMoney, syncMessages } from "../api";
+import {
+  getContacts,
+  getDeviceDirectory,
+  getDevices,
+  getInbox,
+  getMessageThreads,
+  getOutbox,
+  markMessageDelivered,
+  markMessageRead,
+  markThreadRead,
+  sendMoney,
+  syncMessages,
+} from "../api";
 import {
   CheckIcon,
   PaperPlaneIcon,
@@ -9,6 +21,11 @@ import {
   Cross2Icon,
 } from "@radix-ui/react-icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
+import {
+  buildOpaqueEnvelopeScaffold,
+  selectPreferredActiveDevice,
+  selectPreferredRecipientDevice,
+} from "../lib/deviceIdentity.js";
 
 const MICROAPP_PREFIX = "__microapp_v1__:";
 
@@ -362,6 +379,7 @@ function ChatWindow({
   onBack,
   isOnline,
   onSettlePaymentRequest,
+  buildEnvelopeFields,
 }) {
   const [newMessage, setNewMessage] = useState("");
   const [composerError, setComposerError] = useState("");
@@ -399,6 +417,7 @@ function ChatWindow({
       to: selectedContact.username,
       body: trimmed,
       createdAt: new Date().toISOString(),
+      ...buildEnvelopeFields(trimmed),
     };
 
     ws.send(JSON.stringify(message));
@@ -430,15 +449,17 @@ function ChatWindow({
       requestId,
       amount: Number(amount.toFixed(2)),
     };
+    const body = encodeMicroPayload(payload);
 
     const message = addPaymentRequestMetadata({
       id: Date.now() + 1,
       type: "direct_message",
       to: selectedContact.username,
-      body: encodeMicroPayload(payload),
+      body,
       createdAt: new Date().toISOString(),
       paymentStatus: "pending",
       paymentError: "",
+      ...buildEnvelopeFields(body),
     });
 
     ws.send(JSON.stringify(message));
@@ -680,6 +701,8 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const [unreadByUser, setUnreadByUser] = useState({});
   const [threadSummaries, setThreadSummaries] = useState({});
   const [contacts, setContacts] = useState([]);
+  const [currentDeviceIdentity, setCurrentDeviceIdentity] = useState(null);
+  const [selectedContactDirectory, setSelectedContactDirectory] = useState(null);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -694,6 +717,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const unreadByUserRef = useRef(unreadByUser);
 
   const selectedUsername = selectedContact?.username;
+  const recipientDeviceIdentity = selectPreferredRecipientDevice(selectedContactDirectory);
   const messages = selectedUsername ? (threads[selectedUsername] || []) : [];
 
   useEffect(() => {
@@ -711,6 +735,59 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   useEffect(() => {
     unreadByUserRef.current = unreadByUser;
   }, [unreadByUser]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCurrentDeviceIdentity = async () => {
+      try {
+        const deviceResponse = await getDevices();
+        if (!cancelled) {
+          setCurrentDeviceIdentity(selectPreferredActiveDevice(deviceResponse || []));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCurrentDeviceIdentity(null);
+          console.error("Failed to fetch local device identities:", err);
+        }
+      }
+    };
+
+    void fetchCurrentDeviceIdentity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [syncToken]);
+
+  useEffect(() => {
+    if (!selectedUsername) {
+      setSelectedContactDirectory(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchSelectedContactDirectory = async () => {
+      try {
+        const directoryResponse = await getDeviceDirectory(selectedUsername);
+        if (!cancelled) {
+          setSelectedContactDirectory(directoryResponse || null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setSelectedContactDirectory(null);
+          console.error(`Failed to fetch device directory for ${selectedUsername}:`, err);
+        }
+      }
+    };
+
+    void fetchSelectedContactDirectory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedUsername]);
 
   useEffect(() => {
     const fetchContacts = async () => {
@@ -1436,6 +1513,29 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     setSelectedContact(contact);
   };
 
+  const buildEnvelopeFields = (body) => {
+    const senderDeviceID = Number(currentDeviceIdentity?.id);
+    const recipientDeviceID = Number(recipientDeviceIdentity?.id);
+
+    if (!Number.isInteger(senderDeviceID) || senderDeviceID <= 0) {
+      return {};
+    }
+    if (!Number.isInteger(recipientDeviceID) || recipientDeviceID <= 0) {
+      return {};
+    }
+
+    try {
+      return buildOpaqueEnvelopeScaffold({
+        body,
+        senderDeviceID,
+        recipientDeviceID,
+      });
+    } catch (err) {
+      console.error("Failed to build envelope scaffold:", err);
+      return {};
+    }
+  };
+
   const handleSendMessage = (message) => {
     if (!selectedUsername) {
       return;
@@ -1495,15 +1595,17 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       });
 
       if (ws && ws.readyState === WebSocket.OPEN) {
+        const updateBody = encodeMicroPayload({
+          kind: "payment_request_update",
+          requestId: paymentRequest.requestId,
+          status: "paid",
+        });
         ws.send(JSON.stringify({
           id: Date.now(),
           type: "direct_message",
           to: message.from,
-          body: encodeMicroPayload({
-            kind: "payment_request_update",
-            requestId: paymentRequest.requestId,
-            status: "paid",
-          }),
+          body: updateBody,
+          ...buildEnvelopeFields(updateBody),
         }));
       }
     } catch (err) {
@@ -1592,6 +1694,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       onBack={() => setSelectedContact(null)}
       isOnline={onlineUsers.includes(selectedContact.username)}
       onSettlePaymentRequest={handleSettlePaymentRequest}
+      buildEnvelopeFields={buildEnvelopeFields}
     />
   );
 }

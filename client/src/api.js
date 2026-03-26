@@ -310,6 +310,9 @@ export const revokeSession = (sessionID) =>
 
 export const getDevices = () => apiRequest("/api/devices");
 
+export const getDeviceDirectory = (username) =>
+  apiRequest(`/api/devices/directory?username=${encodeURIComponent(username)}`);
+
 export const registerDeviceIdentity = (payload) =>
   apiRequest("/api/devices", {
     method: "POST",

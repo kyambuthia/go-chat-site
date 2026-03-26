@@ -7,6 +7,7 @@ import {
   ensureAccessToken,
   getAccessToken,
   getContacts,
+  getDeviceDirectory,
   getDevices,
   getInbox,
   getMessageThreads,
@@ -243,6 +244,22 @@ test("getDevices uses the protected devices endpoint", async () => {
   assert.equal(capturedURL, "http://localhost:8080/api/devices");
   assert.equal(devices.length, 1);
   assert.equal(devices[0].label, "Laptop");
+});
+
+test("getDeviceDirectory resolves a contact device directory by username", async () => {
+  setToken("token-directory");
+
+  let capturedURL = "";
+  global.fetch = async (url, options) => {
+    capturedURL = url;
+    assert.equal(options.headers.Authorization, "Bearer token-directory");
+    return jsonResponse(200, { username: "alice", devices: [{ id: 7 }] });
+  };
+
+  const directory = await getDeviceDirectory("alice");
+
+  assert.equal(capturedURL, "http://localhost:8080/api/devices/directory?username=alice");
+  assert.equal(directory.devices[0].id, 7);
 });
 
 test("revokeSession deletes by session id", async () => {

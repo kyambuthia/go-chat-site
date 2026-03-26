@@ -144,10 +144,14 @@ type stubDeliveryService struct {
 func (s *stubDeliveryService) SendDirect(ctx context.Context, req coremsg.DirectSendRequest) (coremsg.DeliveryReceipt, error) {
 	_ = ctx
 	delivered := s.transport.SendDirect(req.ToUserID, Message{
-		Type: coremsg.KindDirectMessage,
-		ID:   s.storedMessageID,
-		From: req.From,
-		Body: req.Body,
+		Type:              coremsg.KindDirectMessage,
+		ID:                s.storedMessageID,
+		From:              req.From,
+		Body:              req.Body,
+		Ciphertext:        req.Ciphertext,
+		EnvelopeVersion:   req.EnvelopeVersion,
+		SenderDeviceID:    req.SenderDeviceID,
+		RecipientDeviceID: req.RecipientDeviceID,
 	})
 	return coremsg.DeliveryReceipt{
 		MessageID:       req.MessageID,
@@ -294,7 +298,16 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 
 	_ = readUntilType(t, aliceConn, coremsg.KindUserOnline, 2*time.Second)
 
-	msg := Message{ID: 99, Type: coremsg.KindDirectMessage, To: "bob", Body: "hello"}
+	msg := Message{
+		ID:                99,
+		Type:              coremsg.KindDirectMessage,
+		To:                "bob",
+		Body:              "hello",
+		Ciphertext:        "opaque-ciphertext",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    7,
+		RecipientDeviceID: 9,
+	}
 	if err := aliceConn.WriteJSON(msg); err != nil {
 		t.Fatalf("alice write json: %v", err)
 	}
@@ -308,6 +321,18 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	}
 	if delivered.Body != "hello" {
 		t.Fatalf("delivered.Body = %q, want hello", delivered.Body)
+	}
+	if delivered.Ciphertext != "opaque-ciphertext" {
+		t.Fatalf("delivered.Ciphertext = %q, want opaque-ciphertext", delivered.Ciphertext)
+	}
+	if delivered.EnvelopeVersion != "x3dh-dr-v1" {
+		t.Fatalf("delivered.EnvelopeVersion = %q, want x3dh-dr-v1", delivered.EnvelopeVersion)
+	}
+	if delivered.SenderDeviceID != 7 {
+		t.Fatalf("delivered.SenderDeviceID = %d, want 7", delivered.SenderDeviceID)
+	}
+	if delivered.RecipientDeviceID != 9 {
+		t.Fatalf("delivered.RecipientDeviceID = %d, want 9", delivered.RecipientDeviceID)
 	}
 
 	ack := readUntilType(t, aliceConn, coremsg.KindMessageAck, 2*time.Second)

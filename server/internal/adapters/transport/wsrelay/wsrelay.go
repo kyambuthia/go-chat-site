@@ -254,11 +254,15 @@ func (c *client) readLoop() {
 		}
 
 		receipt, err := c.messaging.SendDirect(c.hub.ctx, coremsg.DirectSendRequest{
-			FromUserID: c.userID,
-			From:       c.username,
-			ToUserID:   recipientID,
-			Body:       msg.Body,
-			MessageID:  msg.ID,
+			FromUserID:        c.userID,
+			From:              c.username,
+			ToUserID:          recipientID,
+			Body:              msg.Body,
+			Ciphertext:        msg.Ciphertext,
+			EnvelopeVersion:   msg.EnvelopeVersion,
+			SenderDeviceID:    msg.SenderDeviceID,
+			RecipientDeviceID: msg.RecipientDeviceID,
+			MessageID:         msg.ID,
 		})
 		if err != nil {
 			c.trySend(Message{Type: coremsg.KindError, ID: msg.ID, To: msg.To, Body: "delivery failed"})
