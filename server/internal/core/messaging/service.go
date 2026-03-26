@@ -7,6 +7,7 @@ type DirectSendRequest struct {
 	From              string
 	ToUserID          int
 	Body              string
+	ContentKind       string
 	Ciphertext        string
 	EnvelopeVersion   string
 	SenderDeviceID    int64
@@ -34,6 +35,7 @@ func (s *RelayService) SendDirect(ctx context.Context, req DirectSendRequest) (D
 		Type:              KindDirectMessage,
 		From:              req.From,
 		Body:              req.Body,
+		ContentKind:       req.ContentKind,
 		Ciphertext:        req.Ciphertext,
 		EnvelopeVersion:   req.EnvelopeVersion,
 		SenderDeviceID:    req.SenderDeviceID,
@@ -77,6 +79,7 @@ func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequ
 			FromUserID:        req.FromUserID,
 			ToUserID:          req.ToUserID,
 			Body:              req.Body,
+			ContentKind:       req.ContentKind,
 			Ciphertext:        req.Ciphertext,
 			EnvelopeVersion:   req.EnvelopeVersion,
 			SenderDeviceID:    req.SenderDeviceID,
@@ -93,6 +96,7 @@ func (s *DurableRelayService) SendDirect(ctx context.Context, req DirectSendRequ
 		ID:                storedID,
 		From:              req.From,
 		Body:              req.Body,
+		ContentKind:       req.ContentKind,
 		Ciphertext:        req.Ciphertext,
 		EnvelopeVersion:   req.EnvelopeVersion,
 		SenderDeviceID:    req.SenderDeviceID,

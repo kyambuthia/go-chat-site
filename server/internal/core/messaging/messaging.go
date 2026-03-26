@@ -30,6 +30,7 @@ type Message struct {
 	From              string      `json:"from,omitempty"`
 	To                string      `json:"to,omitempty"`
 	Body              string      `json:"body,omitempty"`
+	ContentKind       string      `json:"content_kind,omitempty"`
 	Ciphertext        string      `json:"ciphertext,omitempty"`
 	EnvelopeVersion   string      `json:"envelope_version,omitempty"`
 	SenderDeviceID    int64       `json:"sender_device_id,omitempty"`
@@ -68,6 +69,7 @@ type StoredMessage struct {
 	FromUserID        int
 	ToUserID          int
 	Body              string
+	ContentKind       string
 	Ciphertext        string
 	EnvelopeVersion   string
 	SenderDeviceID    int64

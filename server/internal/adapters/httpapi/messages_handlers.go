@@ -282,6 +282,7 @@ func (h *MessagesHandler) GetThreads(w http.ResponseWriter, r *http.Request) {
 				"from_user_id": summary.LastMessageFromUserID,
 				"to_user_id":   summary.LastMessageToUserID,
 				"body":         summary.LastMessageBody,
+				"content_kind": summary.LastMessageContentKind,
 				"created_at":   summary.LastMessageCreatedAt,
 			},
 		}
@@ -499,6 +500,7 @@ func storedMessagesToJSON(msgs []coremsg.StoredMessage) []map[string]any {
 			"from_user_id": msg.FromUserID,
 			"to_user_id":   msg.ToUserID,
 			"body":         msg.Body,
+			"content_kind": msg.ContentKind,
 			"created_at":   msg.CreatedAt,
 		}
 		if msg.Ciphertext != "" {

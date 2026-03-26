@@ -373,6 +373,7 @@ func TestMessagesHandler_GetInbox_ExposesEnvelopeMetadataWhenPresent(t *testing.
 			FromUserID:        1,
 			ToUserID:          2,
 			Body:              "",
+			ContentKind:       "text",
 			Ciphertext:        "opaque-envelope",
 			EnvelopeVersion:   "x3dh-dr-v1",
 			SenderDeviceID:    91,
@@ -399,6 +400,9 @@ func TestMessagesHandler_GetInbox_ExposesEnvelopeMetadataWhenPresent(t *testing.
 	if got := resp[0]["ciphertext"].(string); got != "opaque-envelope" {
 		t.Fatalf("ciphertext = %q, want opaque-envelope", got)
 	}
+	if got := resp[0]["content_kind"].(string); got != "text" {
+		t.Fatalf("content_kind = %q, want text", got)
+	}
 	if got := resp[0]["encryption_version"].(string); got != "x3dh-dr-v1" {
 		t.Fatalf("encryption_version = %q, want x3dh-dr-v1", got)
 	}
@@ -423,6 +427,7 @@ func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *
 			LastMessageFromUserID:   7,
 			LastMessageToUserID:     2,
 			LastMessageBody:         "hello",
+			LastMessageContentKind:  "text",
 			LastMessageCreatedAt:    now,
 			LastDeliveredAt:         &delivered,
 			UnreadCount:             2,
@@ -465,6 +470,9 @@ func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *
 	}
 	if got := lastMessage["body"].(string); got != "hello" {
 		t.Fatalf("last_message.body = %q, want hello", got)
+	}
+	if got := lastMessage["content_kind"].(string); got != "text" {
+		t.Fatalf("last_message.content_kind = %q, want text", got)
 	}
 	if _, ok := lastMessage["delivered_at"]; !ok {
 		t.Fatal("expected delivered_at on last_message")

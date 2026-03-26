@@ -148,6 +148,7 @@ func (s *stubDeliveryService) SendDirect(ctx context.Context, req coremsg.Direct
 		ID:                s.storedMessageID,
 		From:              req.From,
 		Body:              req.Body,
+		ContentKind:       req.ContentKind,
 		Ciphertext:        req.Ciphertext,
 		EnvelopeVersion:   req.EnvelopeVersion,
 		SenderDeviceID:    req.SenderDeviceID,
@@ -303,6 +304,7 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 		Type:              coremsg.KindDirectMessage,
 		To:                "bob",
 		Body:              "hello",
+		ContentKind:       "text",
 		Ciphertext:        "opaque-ciphertext",
 		EnvelopeVersion:   "x3dh-dr-v1",
 		SenderDeviceID:    7,
@@ -321,6 +323,9 @@ func TestWebSocketHandler_DirectMessageDeliveryAndAck(t *testing.T) {
 	}
 	if delivered.Body != "hello" {
 		t.Fatalf("delivered.Body = %q, want hello", delivered.Body)
+	}
+	if delivered.ContentKind != "text" {
+		t.Fatalf("delivered.ContentKind = %q, want text", delivered.ContentKind)
 	}
 	if delivered.Ciphertext != "opaque-ciphertext" {
 		t.Fatalf("delivered.Ciphertext = %q, want opaque-ciphertext", delivered.Ciphertext)

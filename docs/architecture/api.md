@@ -75,6 +75,7 @@ Current sync payload notes:
 - `GET /api/messages/outbox` and `GET /api/messaging/sync` may include `client_message_id` on sent messages so the client can reconcile optimistic local bubbles with durable stored messages after reconnect
 - sent messages may include `delivery_failed: true` when the original real-time send failed because the recipient was offline; if `delivered_at` is still missing and `delivery_failed` is absent, clients should treat the message as pending rather than failed
 - stored message payloads may also include optional E2EE envelope metadata: `ciphertext`, `encryption_version`, `sender_device_id`, and `recipient_device_id`
+- stored message payloads and thread summaries may also include `content_kind` so clients can distinguish user-visible messages from control updates without inspecting plaintext bodies
 - `GET /api/messaging/threads` derives `unread_count` and `last_message` from user-visible thread activity; control-style microapp updates such as `payment_request_update` still appear in thread history/sync payloads, but they do not increment unread counts or replace thread-list previews
 - `POST /api/messaging/read-thread` accepts `{ "with_user_id": <id> }` and marks all unread incoming messages in that one 1:1 conversation as delivered/read so thread-level unread state survives reloads and reconnects
 
@@ -121,6 +122,7 @@ Session management behavior:
 
 ## Encrypted Message Envelope Direction
 - durable message records now reserve optional fields for `ciphertext`, `encryption_version`, `sender_device_id`, and `recipient_device_id`
+- encrypted rows may also carry `content_kind` metadata so unread counts and thread previews do not depend on plaintext parsing
 - plaintext `body` remains supported during migration; encrypted threads should eventually rely on opaque ciphertext plus delivery/sync metadata
 - clients and adapters should treat `ciphertext` as opaque payload data and should not require server-side plaintext inspection for receipts or pagination
 

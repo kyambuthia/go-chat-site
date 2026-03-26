@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kyambuthia/go-chat-site/server/internal/config"
 	coremsg "github.com/kyambuthia/go-chat-site/server/internal/core/messaging"
 )
 
@@ -15,7 +16,7 @@ type Adapter struct {
 }
 
 func summaryVisibleMessagePredicate(alias string) string {
-	return fmt.Sprintf(`(substr(%[1]s.body, 1, 16) != '__microapp_v1__:' OR instr(%[1]s.body, '"kind":"payment_request_update"') = 0)`, alias)
+	return fmt.Sprintf(`(%[1]s.content_kind != 'payment_request_update')`, alias)
 }
 
 var _ coremsg.MessageRepository = (*Adapter)(nil)
@@ -40,12 +41,20 @@ func (a *Adapter) RecordClientMessageCorrelation(ctx context.Context, c coremsg.
 }
 
 func (a *Adapter) SaveDirectMessage(ctx context.Context, msg coremsg.StoredMessage) (coremsg.StoredMessage, error) {
+	body := msg.Body
+	if msg.Ciphertext != "" && !config.MessagingStorePlaintextWhenEncrypted() {
+		body = ""
+	}
+	contentKind := msg.ContentKind
+	if contentKind == "" {
+		contentKind = "text"
+	}
 	result, err := a.DB.ExecContext(ctx, `
 		INSERT INTO messages (
-			from_user_id, to_user_id, body, ciphertext, encryption_version, sender_device_id, recipient_device_id
+			from_user_id, to_user_id, body, content_kind, ciphertext, encryption_version, sender_device_id, recipient_device_id
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, msg.FromUserID, msg.ToUserID, msg.Body, msg.Ciphertext, msg.EnvelopeVersion, msg.SenderDeviceID, msg.RecipientDeviceID)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, msg.FromUserID, msg.ToUserID, body, contentKind, msg.Ciphertext, msg.EnvelopeVersion, msg.SenderDeviceID, msg.RecipientDeviceID)
 	if err != nil {
 		return coremsg.StoredMessage{}, err
 	}
@@ -112,7 +121,7 @@ func (a *Adapter) ListOutboxBefore(ctx context.Context, userID int, beforeID int
 func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64, limit int) ([]coremsg.StoredMessage, error) {
 	rows, err := a.DB.QueryContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
-		       m.sender_device_id, m.recipient_device_id, m.created_at,
+		       m.content_kind, m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at, mc.client_message_id,
 		       CASE
 		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
@@ -147,7 +156,7 @@ func (a *Adapter) ListOutboxAfter(ctx context.Context, userID int, afterID int64
 func (a *Adapter) listOutboxQuery(ctx context.Context, userID int, beforeID int64, limit int) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
-		       m.sender_device_id, m.recipient_device_id, m.created_at,
+		       m.content_kind, m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at, mc.client_message_id,
 		       CASE
 		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
@@ -234,7 +243,7 @@ func (a *Adapter) ListUnreadInboxAfterWithUser(ctx context.Context, userID int, 
 func (a *Adapter) listInboxAfterQuery(ctx context.Context, userID int, withUserID int, afterID int64, limit int, unreadOnly bool) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
-		       m.sender_device_id, m.recipient_device_id, m.created_at,
+		       m.content_kind, m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
@@ -275,7 +284,7 @@ func (a *Adapter) listInboxAfterQuery(ctx context.Context, userID int, withUserI
 func (a *Adapter) GetMessageForRecipient(ctx context.Context, recipientUserID int, messageID int64) (coremsg.StoredMessage, error) {
 	row := a.DB.QueryRowContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
-		       m.sender_device_id, m.recipient_device_id, m.created_at,
+		       m.content_kind, m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
@@ -300,6 +309,8 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 				m.from_user_id,
 				m.to_user_id,
 				m.body,
+				m.content_kind,
+				m.ciphertext,
 				m.created_at,
 				md.delivered_at,
 				md.read_at,
@@ -333,7 +344,12 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 			tm.id,
 			tm.from_user_id,
 			tm.to_user_id,
-			tm.body,
+			CASE
+				WHEN tm.body != '' THEN tm.body
+				WHEN tm.ciphertext != '' THEN 'Encrypted message'
+				ELSE ''
+			END,
+			tm.content_kind,
 			tm.created_at,
 			tm.delivered_at,
 			tm.read_at,
@@ -365,6 +381,7 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 			&summary.LastMessageFromUserID,
 			&summary.LastMessageToUserID,
 			&summary.LastMessageBody,
+			&summary.LastMessageContentKind,
 			&createdAt,
 			&deliveredAt,
 			&readAt,
@@ -393,7 +410,7 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int, beforeID int64, limit int, unreadOnly bool) ([]coremsg.StoredMessage, error) {
 	query := `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
-		       m.sender_device_id, m.recipient_device_id, m.created_at,
+		       m.content_kind, m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at
 		FROM messages m
 		LEFT JOIN message_deliveries md ON md.message_id = m.id
@@ -438,7 +455,7 @@ func (a *Adapter) listInboxQuery(ctx context.Context, userID int, withUserID int
 func (a *Adapter) getByID(ctx context.Context, id int64) (coremsg.StoredMessage, error) {
 	row := a.DB.QueryRowContext(ctx, `
 		SELECT m.id, m.from_user_id, m.to_user_id, m.body, m.ciphertext, m.encryption_version,
-		       m.sender_device_id, m.recipient_device_id, m.created_at,
+		       m.content_kind, m.sender_device_id, m.recipient_device_id, m.created_at,
 		       md.delivered_at, md.read_at, mc.client_message_id,
 		       CASE
 		           WHEN mc.client_message_id IS NOT NULL AND mc.delivered = 0 AND md.delivered_at IS NULL THEN 1
@@ -461,6 +478,7 @@ func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 	var createdAt time.Time
 	var ciphertext sql.NullString
 	var encryptionVersion sql.NullString
+	var contentKind sql.NullString
 	var senderDeviceID sql.NullInt64
 	var recipientDeviceID sql.NullInt64
 	var deliveredAt sql.NullTime
@@ -472,6 +490,7 @@ func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 		&msg.Body,
 		&ciphertext,
 		&encryptionVersion,
+		&contentKind,
 		&senderDeviceID,
 		&recipientDeviceID,
 		&createdAt,
@@ -486,6 +505,11 @@ func scanStoredMessage(s scanner) (coremsg.StoredMessage, error) {
 	}
 	if encryptionVersion.Valid {
 		msg.EnvelopeVersion = encryptionVersion.String
+	}
+	if contentKind.Valid && contentKind.String != "" {
+		msg.ContentKind = contentKind.String
+	} else {
+		msg.ContentKind = "text"
 	}
 	if senderDeviceID.Valid {
 		msg.SenderDeviceID = senderDeviceID.Int64
@@ -509,6 +533,7 @@ func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
 	var createdAt time.Time
 	var ciphertext sql.NullString
 	var encryptionVersion sql.NullString
+	var contentKind sql.NullString
 	var senderDeviceID sql.NullInt64
 	var recipientDeviceID sql.NullInt64
 	var deliveredAt sql.NullTime
@@ -522,6 +547,7 @@ func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
 		&msg.Body,
 		&ciphertext,
 		&encryptionVersion,
+		&contentKind,
 		&senderDeviceID,
 		&recipientDeviceID,
 		&createdAt,
@@ -538,6 +564,11 @@ func scanStoredMessageWithClientID(s scanner) (coremsg.StoredMessage, error) {
 	}
 	if encryptionVersion.Valid {
 		msg.EnvelopeVersion = encryptionVersion.String
+	}
+	if contentKind.Valid && contentKind.String != "" {
+		msg.ContentKind = contentKind.String
+	} else {
+		msg.ContentKind = "text"
 	}
 	if senderDeviceID.Valid {
 		msg.SenderDeviceID = senderDeviceID.Int64

@@ -103,6 +103,13 @@ function getDisplayedMessageBody(message, fallback = "No messages yet") {
   if (canUseMessageBodyForDisplay(message)) {
     return message.body || fallback;
   }
+  const contentKind = message.contentKind || message.content_kind || "text";
+  if (contentKind === "payment_request") {
+    return "Encrypted payment request";
+  }
+  if (contentKind === "payment_request_update") {
+    return "Encrypted payment update";
+  }
   return "Encrypted message";
 }
 
@@ -222,6 +229,7 @@ function sortMessages(messages) {
 
 function normalizeEnvelopeFields(source) {
   return {
+    contentKind: source?.content_kind || source?.contentKind || "text",
     ciphertext: source?.ciphertext || "",
     encryptionVersion: source?.encryption_version || source?.encryptionVersion || "",
     senderDeviceID: Number(source?.sender_device_id || source?.senderDeviceID || 0),
@@ -462,10 +470,11 @@ function ChatWindow({
     try {
       const message = {
         id: Date.now(),
-        type: "direct_message",
-        to: selectedContact.username,
-        body: trimmed,
-        createdAt: new Date().toISOString(),
+      type: "direct_message",
+      to: selectedContact.username,
+      body: trimmed,
+      content_kind: "text",
+      createdAt: new Date().toISOString(),
         ...(await buildEnvelopeFields(trimmed)),
       };
 
@@ -509,6 +518,7 @@ function ChatWindow({
         type: "direct_message",
         to: selectedContact.username,
         body,
+        content_kind: "payment_request",
         createdAt: new Date().toISOString(),
         paymentStatus: "pending",
         paymentError: "",
@@ -1764,6 +1774,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           type: "direct_message",
           to: message.from,
           body: updateBody,
+          content_kind: "payment_request_update",
           ...envelopeFields,
         }));
       }

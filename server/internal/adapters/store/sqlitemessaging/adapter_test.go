@@ -78,6 +78,7 @@ func TestAdapter_SaveDirectMessage_PersistsEnvelopeMetadata(t *testing.T) {
 		FromUserID:        aliceID,
 		ToUserID:          bobID,
 		Body:              "",
+		ContentKind:       "text",
 		Ciphertext:        "opaque-envelope",
 		EnvelopeVersion:   "x3dh-dr-v1",
 		SenderDeviceID:    101,
@@ -102,6 +103,45 @@ func TestAdapter_SaveDirectMessage_PersistsEnvelopeMetadata(t *testing.T) {
 	}
 	if inbox[0].SenderDeviceID != 101 || inbox[0].RecipientDeviceID != 202 {
 		t.Fatalf("unexpected device metadata: %+v", inbox[0])
+	}
+	if inbox[0].ContentKind != "text" {
+		t.Fatalf("content kind = %q, want text", inbox[0].ContentKind)
+	}
+}
+
+func TestAdapter_SaveDirectMessage_StripsPlaintextWhenEncryptedFlagDisabled(t *testing.T) {
+	t.Setenv("MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED", "false")
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	saved, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID:        aliceID,
+		ToUserID:          bobID,
+		Body:              "hello",
+		ContentKind:       "text",
+		Ciphertext:        "opaque-envelope",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    101,
+		RecipientDeviceID: 202,
+	})
+	if err != nil {
+		t.Fatalf("SaveDirectMessage error: %v", err)
+	}
+	if saved.Body != "" {
+		t.Fatalf("saved body = %q, want empty", saved.Body)
+	}
+
+	inbox, err := a.ListInbox(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListInbox error: %v", err)
+	}
+	if len(inbox) != 1 {
+		t.Fatalf("expected 1 inbox message, got %d", len(inbox))
+	}
+	if inbox[0].Body != "" {
+		t.Fatalf("inbox body = %q, want empty", inbox[0].Body)
 	}
 }
 
@@ -362,9 +402,10 @@ func TestAdapter_ListUnreadInbox_ExcludesPaymentUpdateControlMessages(t *testing
 	a := &Adapter{DB: s.DB}
 
 	if _, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
-		FromUserID: aliceID,
-		ToUserID:   bobID,
-		Body:       `__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+		FromUserID:  aliceID,
+		ToUserID:    bobID,
+		Body:        `__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+		ContentKind: "payment_request_update",
 	}); err != nil {
 		t.Fatalf("SaveDirectMessage payment update: %v", err)
 	}
@@ -689,9 +730,10 @@ func TestAdapter_ListThreadSummaries_IgnorePaymentUpdateControlMessages(t *testi
 	}
 
 	if _, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
-		FromUserID: aliceID,
-		ToUserID:   bobID,
-		Body:       `__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+		FromUserID:  aliceID,
+		ToUserID:    bobID,
+		Body:        `__microapp_v1__:{"kind":"payment_request_update","requestId":"payreq_1","status":"paid"}`,
+		ContentKind: "payment_request_update",
 	}); err != nil {
 		t.Fatalf("SaveDirectMessage payment update: %v", err)
 	}
@@ -711,5 +753,40 @@ func TestAdapter_ListThreadSummaries_IgnorePaymentUpdateControlMessages(t *testi
 	}
 	if summaries[0].UnreadCount != 0 {
 		t.Fatalf("UnreadCount = %d, want 0", summaries[0].UnreadCount)
+	}
+}
+
+func TestAdapter_ListThreadSummaries_EncryptedMessageUsesPlaceholderPreview(t *testing.T) {
+	t.Setenv("MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED", "false")
+	s := newMessagingStore(t)
+	aliceID := seedUser(t, s, "alice")
+	bobID := seedUser(t, s, "bob")
+	a := &Adapter{DB: s.DB}
+
+	if _, err := a.SaveDirectMessage(context.Background(), coremsg.StoredMessage{
+		FromUserID:        aliceID,
+		ToUserID:          bobID,
+		Body:              "hidden",
+		ContentKind:       "text",
+		Ciphertext:        "opaque-envelope",
+		EnvelopeVersion:   "x3dh-dr-v1",
+		SenderDeviceID:    7,
+		RecipientDeviceID: 9,
+	}); err != nil {
+		t.Fatalf("SaveDirectMessage encrypted msg: %v", err)
+	}
+
+	summaries, err := a.ListThreadSummaries(context.Background(), bobID, 10)
+	if err != nil {
+		t.Fatalf("ListThreadSummaries error: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	if summaries[0].LastMessageBody != "Encrypted message" {
+		t.Fatalf("LastMessageBody = %q, want Encrypted message", summaries[0].LastMessageBody)
+	}
+	if summaries[0].LastMessageContentKind != "text" {
+		t.Fatalf("LastMessageContentKind = %q, want text", summaries[0].LastMessageContentKind)
 	}
 }

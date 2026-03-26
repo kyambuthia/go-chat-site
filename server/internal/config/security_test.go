@@ -95,3 +95,20 @@ func TestIntFromEnv_UsesFallbackForInvalidValues(t *testing.T) {
 		t.Fatalf("WSHandshakeRateLimitPerMinute = %d, want 240", got)
 	}
 }
+
+func TestMessagingStorePlaintextWhenEncrypted_DefaultsAndParsesEnv(t *testing.T) {
+	t.Setenv(EnvMessagingStorePlaintext, "")
+	if got := MessagingStorePlaintextWhenEncrypted(); got != true {
+		t.Fatalf("MessagingStorePlaintextWhenEncrypted default = %v, want true", got)
+	}
+
+	t.Setenv(EnvMessagingStorePlaintext, "false")
+	if got := MessagingStorePlaintextWhenEncrypted(); got != false {
+		t.Fatalf("MessagingStorePlaintextWhenEncrypted false = %v, want false", got)
+	}
+
+	t.Setenv(EnvMessagingStorePlaintext, "invalid")
+	if got := MessagingStorePlaintextWhenEncrypted(); got != true {
+		t.Fatalf("MessagingStorePlaintextWhenEncrypted invalid = %v, want true", got)
+	}
+}

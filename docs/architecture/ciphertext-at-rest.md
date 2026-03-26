@@ -41,6 +41,7 @@ The following fields remain acceptable metadata in the target design:
 - created_at / delivered_at / read_at
 - client message id
 - protocol version / message kind
+- explicit content kind / control-message classification metadata
 - coarse payload length or encoding metadata when strictly needed for transport validation
 
 The following should not remain in cleartext for encrypted threads:
@@ -90,6 +91,7 @@ This repo should prefer the option that keeps sync/query behavior simplest while
 ### Stage 3: Read Path Preference for Ciphertext
 - encrypted threads use ciphertext envelopes exclusively
 - summary/unread logic must rely on message metadata, not plaintext inspection
+- control-message filtering should use explicit metadata such as `content_kind`, not body parsing
 - any message-type branching that still requires plaintext must be removed or redesigned
 
 ### Stage 4: Legacy Plaintext Retirement

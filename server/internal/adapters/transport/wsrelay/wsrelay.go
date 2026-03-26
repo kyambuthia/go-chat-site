@@ -258,6 +258,7 @@ func (c *client) readLoop() {
 			From:              c.username,
 			ToUserID:          recipientID,
 			Body:              msg.Body,
+			ContentKind:       msg.ContentKind,
 			Ciphertext:        msg.Ciphertext,
 			EnvelopeVersion:   msg.EnvelopeVersion,
 			SenderDeviceID:    msg.SenderDeviceID,

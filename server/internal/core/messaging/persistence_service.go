@@ -9,6 +9,7 @@ type PersistDirectMessageRequest struct {
 	FromUserID        int
 	ToUserID          int
 	Body              string
+	ContentKind       string
 	Ciphertext        string
 	EnvelopeVersion   string
 	SenderDeviceID    int64
@@ -80,6 +81,7 @@ func (s *persistenceService) StoreDirectMessage(ctx context.Context, req Persist
 		FromUserID:        req.FromUserID,
 		ToUserID:          req.ToUserID,
 		Body:              req.Body,
+		ContentKind:       req.ContentKind,
 		Ciphertext:        req.Ciphertext,
 		EnvelopeVersion:   req.EnvelopeVersion,
 		SenderDeviceID:    req.SenderDeviceID,

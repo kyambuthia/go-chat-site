@@ -20,6 +20,7 @@ const (
 	EnvLoginLockoutThreshold    = "LOGIN_LOCKOUT_THRESHOLD"
 	EnvLoginLockoutWindowMins   = "LOGIN_LOCKOUT_WINDOW_MINUTES"
 	EnvLoginLockoutDurationMins = "LOGIN_LOCKOUT_DURATION_MINUTES"
+	EnvMessagingStorePlaintext  = "MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED"
 )
 
 func DefaultWSAllowedOrigins() []string {
@@ -114,6 +115,9 @@ func LoginLockoutWindow() time.Duration {
 func LoginLockoutDuration() time.Duration {
 	return time.Duration(intFromEnv(EnvLoginLockoutDurationMins, 15)) * time.Minute
 }
+func MessagingStorePlaintextWhenEncrypted() bool {
+	return boolFromEnv(EnvMessagingStorePlaintext, true)
+}
 
 func intFromEnv(key string, fallback int) int {
 	raw := strings.TrimSpace(os.Getenv(key))
@@ -122,6 +126,18 @@ func intFromEnv(key string, fallback int) int {
 	}
 	v, err := strconv.Atoi(raw)
 	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
+}
+
+func boolFromEnv(key string, fallback bool) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.ParseBool(raw)
+	if err != nil {
 		return fallback
 	}
 	return v
