@@ -15,12 +15,16 @@ What already exists:
 - durable message ids, inbox/outbox history, thread summaries, and sync cursors
 - explicit delivery/read state
 - device identity registration, prekeys, and public device directory APIs
+- additive ciphertext/device-routing fields on durable message rows
+- browser-side private device bundle generation and storage
+- encrypted envelope generation on send plus local decrypt-on-read for matching devices
+- explicit `content_kind` metadata for summary/unread logic
+- sender-side local content cache so ciphertext-only outbox rows can still render after reload
 
 What does not exist yet:
-- encrypted message envelopes
-- ciphertext columns/tables
-- client-side ratchet/session state
-- a migration path for legacy plaintext rows
+- production-default ciphertext-only storage rollout
+- client-side ratchet/session state beyond the current bootstrap encrypted-envelope path
+- a completed migration/retention decision for legacy plaintext rows
 
 ## Target State
 For encrypted 1:1 conversations, the durable store should persist opaque ciphertext envelopes plus the minimum metadata needed for:
@@ -83,16 +87,30 @@ This repo should prefer the option that keeps sync/query behavior simplest while
 - add sender/recipient device metadata
 - keep existing plaintext path intact
 
+Current repo status:
+- done, including `ciphertext`, `encryption_version`, `sender_device_id`, `recipient_device_id`, and `content_kind`
+
 ### Stage 2: Encrypted Write Path Behind a Flag
 - clients with device keys can submit encrypted envelopes
 - the server stores ciphertext but still serves legacy plaintext rows unchanged
 - receipt and sync behavior must remain identical from the client's perspective
+
+Current repo status:
+- done for the initial rollout path
+- `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` controls whether encrypted rows still dual-write plaintext `body`
 
 ### Stage 3: Read Path Preference for Ciphertext
 - encrypted threads use ciphertext envelopes exclusively
 - summary/unread logic must rely on message metadata, not plaintext inspection
 - control-message filtering should use explicit metadata such as `content_kind`, not body parsing
 - any message-type branching that still requires plaintext must be removed or redesigned
+
+Current repo status:
+- partly done
+- recipient read path already prefers local decryption over plaintext fallback
+- undecrypted incoming ciphertext no longer trusts compatibility plaintext for bubbles/previews
+- thread summaries and unread filtering already use `content_kind` metadata
+- remaining work is mainly around rollout posture and removing the last compatibility assumptions from sender history/UX
 
 ### Stage 4: Legacy Plaintext Retirement
 - stop writing plaintext for E2EE-capable threads
@@ -117,6 +135,7 @@ This repo should prefer the option that keeps sync/query behavior simplest while
 - receipt updates remain stable when message content is opaque
 - revoked devices cannot continue publishing usable encrypted envelopes
 - thread previews for encrypted conversations do not rely on plaintext body access
+- senders can still reconstruct their own ciphertext-only history after reload
 
 ## Out Of Scope For This Plan
 - legal/compliance policy for encrypted-content retention

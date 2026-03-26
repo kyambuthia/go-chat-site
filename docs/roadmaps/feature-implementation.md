@@ -136,22 +136,42 @@ Deliverables:
 - key rotation and revocation semantics
 - protocol ADR for 1:1 E2EE
 - server-side ciphertext-at-rest migration plan
+- client-side encrypted envelope generation and local decrypt path
+- message `content_kind` metadata for ciphertext-safe summaries/unread state
 
 Data work:
 - add `device_identities`
 - add `device_prekeys`
 - add optional `device_sessions` metadata
+- add encrypted message envelope fields on durable messages
+- add explicit `content_kind` metadata for durable thread-state logic
 
 Client work:
 - manage device enrollment and key publication
 - generate and persist local device private bundles in-browser
 - separate plaintext composer state from transport payload generation
+- decrypt incoming/history messages locally when the matching device bundle exists
+- cache sent encrypted message content locally so sender history survives ciphertext-only storage
 
 Exit criteria:
 - a user can register at least one device identity
 - key material can be rotated and revoked without breaking account identity
 - the client can produce encrypted envelopes from published device bundles while preserving current delivery semantics
+- the client can decrypt incoming encrypted messages addressed to a locally enrolled device
+- thread previews and unread counts for encrypted-capable threads rely on metadata, not plaintext inspection
 - the selected encryption protocol is documented and test-covered at the integration boundary
+
+Current repo status:
+- device registration, rotation, revocation, and public directory flows are implemented
+- local browser-side private key bundles are generated and stored for enrolled devices
+- encrypted envelopes are generated on send and decrypted locally on read when key material is available
+- summaries/unread filtering now use `content_kind` metadata instead of body parsing
+- ciphertext-only durable storage is supported behind `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=false`
+
+Main remaining work before Phase 4 can be treated as fully complete:
+- enable ciphertext-only storage as the default rollout mode after controlled validation
+- remove remaining compatibility assumptions around plaintext sender history in long-tail edge cases
+- decide/document the production rollout posture for encrypted-payment UX on devices that cannot decrypt
 
 ## Phase 5: P2P Messaging Transport
 Outcome:

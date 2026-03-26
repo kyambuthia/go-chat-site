@@ -48,11 +48,17 @@ Implemented in current codebase:
 
 ### 4. Messaging Privacy
 - Risk: server-visible plaintext messages in centralized relay architecture
-- Current mitigation: transport auth only (no E2EE)
+- Current mitigation:
+  - device identity registration and public directory model
+  - client-generated local private device bundles
+  - encrypted envelope generation on send
+  - local decrypt-on-read for matching recipient devices
+  - metadata-driven thread summaries/unread logic via `content_kind`
+  - optional server plaintext suppression for encrypted rows via `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=false`
 - Next steps:
-  - add client-side encrypted envelope support on top of the existing device-key APIs
-  - follow `docs/architecture/decisions/e2ee-1to1-protocol.md` for 1:1 protocol direction
-  - follow `docs/architecture/ciphertext-at-rest.md` for durable storage migration
+  - validate ciphertext-only storage as the default rollout mode
+  - reduce remaining compatibility reliance on locally cached sender plaintext
+  - follow `docs/architecture/decisions/e2ee-1to1-protocol.md` for the full X3DH + Double Ratchet target
 
 ### 5. Payment / Ledger Fraud and Compliance Exposure
 - Risk: fund theft, fake disputes, sanctions/KYC violations once real rails exist
@@ -74,6 +80,7 @@ Implemented in current codebase:
 - `LOGIN_LOCKOUT_THRESHOLD` (optional; default `5`)
 - `LOGIN_LOCKOUT_WINDOW_MINUTES` (optional; default `15`)
 - `LOGIN_LOCKOUT_DURATION_MINUTES` (optional; default `15`)
+- `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` (optional; default `true`)
 
 ## Session Lifecycle
 - `POST /api/login` issues a session-backed access token and a refresh token.

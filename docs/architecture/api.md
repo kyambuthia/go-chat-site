@@ -65,6 +65,7 @@ Auth transport:
 Current delivery behavior:
 - new connections receive `presence_state` with the currently online usernames
 - `direct_message` to online user is forwarded with durable `id` when available
+- `direct_message` payloads may also carry `content_kind`, `ciphertext`, `encryption_version`, `sender_device_id`, and `recipient_device_id`
 - sender receives `message_ack` on successful relay; the ack echoes the client `id` and may include `stored_message_id`
 - if recipient offline, sender receives `error` and **no ack**; offline-send errors may include `stored_message_id` when the message was persisted
 
@@ -76,6 +77,7 @@ Current sync payload notes:
 - sent messages may include `delivery_failed: true` when the original real-time send failed because the recipient was offline; if `delivered_at` is still missing and `delivery_failed` is absent, clients should treat the message as pending rather than failed
 - stored message payloads may also include optional E2EE envelope metadata: `ciphertext`, `encryption_version`, `sender_device_id`, and `recipient_device_id`
 - stored message payloads and thread summaries may also include `content_kind` so clients can distinguish user-visible messages from control updates without inspecting plaintext bodies
+- encrypted-capable senders may persist a local client-side content cache keyed by `client_message_id` / `stored_message_id` so ciphertext-only outbox rows still render after reload
 - `GET /api/messaging/threads` derives `unread_count` and `last_message` from user-visible thread activity; control-style microapp updates such as `payment_request_update` still appear in thread history/sync payloads, but they do not increment unread counts or replace thread-list previews
 - `POST /api/messaging/read-thread` accepts `{ "with_user_id": <id> }` and marks all unread incoming messages in that one 1:1 conversation as delivered/read so thread-level unread state survives reloads and reconnects
 
@@ -112,6 +114,7 @@ Session management behavior:
 - Login uses per-IP and per-user quotas plus a lockout/backoff table
 - Refresh uses per-IP quotas to bound refresh-token abuse and replay probing
 - WS origin checks use `WS_ALLOWED_ORIGINS` with localhost-safe defaults
+- encrypted-message plaintext dual-write can be controlled with `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED`
 
 ## Current Device Identity Contract
 - `POST /api/devices` registers a device identity with `label`, `algorithm`, `identity_key`, `signed_prekey_id`, `signed_prekey`, `signed_prekey_signature`, and `prekeys`
@@ -123,7 +126,8 @@ Session management behavior:
 ## Encrypted Message Envelope Direction
 - durable message records now reserve optional fields for `ciphertext`, `encryption_version`, `sender_device_id`, and `recipient_device_id`
 - encrypted rows may also carry `content_kind` metadata so unread counts and thread previews do not depend on plaintext parsing
-- plaintext `body` remains supported during migration; encrypted threads should eventually rely on opaque ciphertext plus delivery/sync metadata
+- plaintext `body` remains supported during migration, but encrypted rows can already be stored without plaintext when `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=false`
+- ciphertext-only durable rows should still preserve sender UX via local client-side sent-content caching and recipient UX via local decryption
 - clients and adapters should treat `ciphertext` as opaque payload data and should not require server-side plaintext inspection for receipts or pagination
 
 ## Future Versioning Strategy
