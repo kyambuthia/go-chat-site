@@ -15,6 +15,7 @@ type ThreadSummary struct {
 	LastMessageFromUserID   int
 	LastMessageToUserID     int
 	LastMessageBody         string
+	LastMessageEncrypted    bool
 	LastMessageContentKind  string
 	LastMessageCreatedAt    time.Time
 	LastDeliveredAt         *time.Time

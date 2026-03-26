@@ -97,8 +97,22 @@ function decodeMicroPayload(body) {
   }
 }
 
+function getMessageContentKind(message) {
+  return message?.contentKind || message?.content_kind || "text";
+}
+
+function isEncryptedMessage(message) {
+  return Boolean(message?.ciphertext || message?.encrypted);
+}
+
 function canUseMessageBodyForDisplay(message) {
-  return !message?.ciphertext || message.sent || message.decrypted;
+  if (!isEncryptedMessage(message)) {
+    return true;
+  }
+  if (message?.encryptedUnavailable) {
+    return false;
+  }
+  return Boolean(message?.body);
 }
 
 function getDisplayedMessageBody(message, fallback = "No messages yet") {
@@ -106,8 +120,8 @@ function getDisplayedMessageBody(message, fallback = "No messages yet") {
     return fallback;
   }
   if (canUseMessageBodyForDisplay(message)) {
-    if (!message.body && message.ciphertext) {
-      const contentKind = message.contentKind || message.content_kind || "text";
+    if (!message.body && isEncryptedMessage(message)) {
+      const contentKind = getMessageContentKind(message);
       if (contentKind === "payment_request") {
         return "Encrypted payment request";
       }
@@ -118,7 +132,7 @@ function getDisplayedMessageBody(message, fallback = "No messages yet") {
     }
     return message.body || fallback;
   }
-  const contentKind = message.contentKind || message.content_kind || "text";
+  const contentKind = getMessageContentKind(message);
   if (contentKind === "payment_request") {
     return "Encrypted payment request";
   }
@@ -126,6 +140,21 @@ function getDisplayedMessageBody(message, fallback = "No messages yet") {
     return "Encrypted payment update";
   }
   return "Encrypted message";
+}
+
+function getEncryptedMessageAssistiveText(message) {
+  if (!message?.encryptedUnavailable) {
+    return "";
+  }
+
+  const contentKind = getMessageContentKind(message);
+  if (contentKind === "payment_request") {
+    return "Open this chat on the enrolled device to review or pay this request.";
+  }
+  if (contentKind === "payment_request_update") {
+    return "Open this chat on the enrolled device to review this payment update.";
+  }
+  return "Open this chat on the enrolled device to decrypt this message.";
 }
 
 function getPaymentRequestMeta(message) {
@@ -244,16 +273,17 @@ function sortMessages(messages) {
 
 function normalizeEnvelopeFields(source) {
   return {
-    contentKind: source?.content_kind || source?.contentKind || "text",
+    contentKind: getMessageContentKind(source),
     ciphertext: source?.ciphertext || "",
     encryptionVersion: source?.encryption_version || source?.encryptionVersion || "",
     senderDeviceID: Number(source?.sender_device_id || source?.senderDeviceID || 0),
     recipientDeviceID: Number(source?.recipient_device_id || source?.recipientDeviceID || 0),
+    encrypted: Boolean(source?.encrypted || source?.ciphertext),
   };
 }
 
 function withEncryptedBodyFallback(message) {
-  if (!message?.ciphertext || message?.body) {
+  if (!message?.ciphertext || message?.decrypted) {
     return message;
   }
   if (message.sent) {
@@ -268,10 +298,11 @@ function withEncryptedBodyFallback(message) {
         contentKind: message.contentKind || cached.content_kind || "text",
       };
     }
+    return message;
   }
   return {
     ...message,
-    body: "Encrypted message unavailable on this device.",
+    body: "",
     encryptedUnavailable: true,
   };
 }
@@ -355,7 +386,9 @@ function buildLocalThreadSummary(contact, message, unreadCount = 0) {
       id: message.serverID || message.id,
       from_user_id: message.sent ? null : contact.id,
       to_user_id: message.sent ? contact.id : null,
-      body: getDisplayedMessageBody(message),
+      body: message.body || "",
+      content_kind: getMessageContentKind(message),
+      encrypted: isEncryptedMessage(message),
       created_at: message.createdAt,
     },
   };
@@ -371,7 +404,9 @@ function buildThreadSummaryLastMessage(contact, message, fallbackUserID = null) 
     id: message.serverID || message.id,
     from_user_id: message.sent ? null : counterpartyUserID,
     to_user_id: message.sent ? counterpartyUserID : null,
-    body: getDisplayedMessageBody(message),
+    body: message.body || "",
+    content_kind: getMessageContentKind(message),
+    encrypted: isEncryptedMessage(message),
     created_at: message.createdAt,
   };
 }
@@ -431,6 +466,9 @@ function getMaxThreadSummaryMessageID(summaries) {
 
 function summarizePreviewBody(message) {
   const displayedBody = getDisplayedMessageBody(message);
+  if (!canUseMessageBodyForDisplay(message)) {
+    return displayedBody || "No messages yet";
+  }
   const payload = decodeMicroPayload(displayedBody);
   if (!payload) {
     return displayedBody || "No messages yet";
@@ -605,6 +643,7 @@ function ChatWindow({
           const msg = entry.message;
           const paymentRequest = getPaymentRequestMeta(msg);
           const paymentUpdate = getPaymentUpdateMeta(msg);
+          const encryptedAssistiveText = getEncryptedMessageAssistiveText(msg);
           const isPaymentRequest = !!paymentRequest;
           const isReceivedRequest = isPaymentRequest && !msg.sent;
           const isPendingRequest = isPaymentRequest && paymentRequest.status === "pending";
@@ -683,6 +722,7 @@ function ChatWindow({
                   </>
                 )}
               </div>
+              {encryptedAssistiveText && <p className="message-assistive-note">{encryptedAssistiveText}</p>}
               {msg.sent && msg.errorMessage && <p className="message-inline-error">{msg.errorMessage}</p>}
             </div>
           );
@@ -1633,7 +1673,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
                   id: normalized.serverID || normalized.id,
                   from_user_id: existing.user_id,
                   to_user_id: null,
-                  body: getDisplayedMessageBody(normalized),
+                  body: normalized.body || "",
+                  content_kind: getMessageContentKind(normalized),
+                  encrypted: isEncryptedMessage(normalized),
                   created_at: normalized.createdAt,
                 },
               },

@@ -455,6 +455,13 @@ button.accept {
   color: var(--muted);
 }
 
+.message-assistive-note {
+  margin-top: 4px;
+  max-width: 34ch;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .composer-shell {
   border-top: 1px solid var(--line);
   background: #fff;

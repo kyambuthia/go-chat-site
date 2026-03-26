@@ -344,11 +344,8 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 			tm.id,
 			tm.from_user_id,
 			tm.to_user_id,
-			CASE
-				WHEN tm.body != '' THEN tm.body
-				WHEN tm.ciphertext != '' THEN 'Encrypted message'
-				ELSE ''
-			END,
+			COALESCE(tm.body, ''),
+			CASE WHEN tm.ciphertext != '' THEN 1 ELSE 0 END,
 			tm.content_kind,
 			tm.created_at,
 			tm.delivered_at,
@@ -370,6 +367,7 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 	for rows.Next() {
 		var summary coremsg.ThreadSummary
 		var createdAt time.Time
+		var lastMessageEncrypted int64
 		var deliveredAt sql.NullTime
 		var readAt sql.NullTime
 		if err := rows.Scan(
@@ -381,6 +379,7 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 			&summary.LastMessageFromUserID,
 			&summary.LastMessageToUserID,
 			&summary.LastMessageBody,
+			&lastMessageEncrypted,
 			&summary.LastMessageContentKind,
 			&createdAt,
 			&deliveredAt,
@@ -398,6 +397,7 @@ func (a *Adapter) ListThreadSummaries(ctx context.Context, userID int, limit int
 			t := readAt.Time
 			summary.LastReadAt = &t
 		}
+		summary.LastMessageEncrypted = lastMessageEncrypted != 0
 		summaries = append(summaries, summary)
 	}
 	if err := rows.Err(); err != nil {

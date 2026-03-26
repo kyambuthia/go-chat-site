@@ -167,10 +167,11 @@ Current repo status:
 - encrypted envelopes are generated on send and decrypted locally on read when key material is available
 - summaries/unread filtering now use `content_kind` metadata instead of body parsing
 - ciphertext-only durable storage is now the default path; `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=true` remains as a temporary compatibility rollback
+- undecryptable encrypted messages now render explicit placeholder UX, and ciphertext-only thread previews are driven by metadata instead of fake plaintext bodies
 
 Main remaining work before Phase 4 can be treated as fully complete:
-- remove remaining compatibility assumptions around plaintext sender history in long-tail edge cases
-- decide/document the production rollout posture for encrypted-payment UX on devices that cannot decrypt
+- tighten the broader device identity UX around enrollment, recovery expectations, and multi-device behavior
+- move beyond the current bootstrap envelope path toward the full X3DH + Double Ratchet target described in the ADR
 
 ## Phase 5: P2P Messaging Transport
 Outcome:

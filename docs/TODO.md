@@ -7,9 +7,6 @@ It is intentionally scoped to feature work, not general repo hygiene.
 ## Phase 4: Device Identity And E2EE Foundations
 
 ### Remaining
-- make ciphertext-only storage the default rollout mode instead of an optional compatibility path
-- remove remaining plaintext compatibility assumptions from sender history and long-tail encrypted chat edge cases
-- decide and document the product behavior for encrypted payment/message UX on devices that cannot decrypt
 - tighten the broader device identity / E2EE user experience so enrollment, recovery expectations, and multi-device behavior are clear end to end
 - move beyond the current bootstrap encrypted-envelope path toward the full X3DH + Double Ratchet target described in the ADR
 

@@ -286,6 +286,9 @@ func (h *MessagesHandler) GetThreads(w http.ResponseWriter, r *http.Request) {
 				"created_at":   summary.LastMessageCreatedAt,
 			},
 		}
+		if summary.LastMessageEncrypted {
+			item["last_message"].(map[string]any)["encrypted"] = true
+		}
 		if summary.LastDeliveredAt != nil {
 			item["last_message"].(map[string]any)["delivered_at"] = *summary.LastDeliveredAt
 		}

@@ -427,6 +427,7 @@ func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *
 			LastMessageFromUserID:   7,
 			LastMessageToUserID:     2,
 			LastMessageBody:         "hello",
+			LastMessageEncrypted:    true,
 			LastMessageContentKind:  "text",
 			LastMessageCreatedAt:    now,
 			LastDeliveredAt:         &delivered,
@@ -470,6 +471,9 @@ func TestMessagesHandler_GetThreads_UsesThreadSummaryServiceAndSupportsLimit(t *
 	}
 	if got := lastMessage["body"].(string); got != "hello" {
 		t.Fatalf("last_message.body = %q, want hello", got)
+	}
+	if got := lastMessage["encrypted"].(bool); !got {
+		t.Fatal("last_message.encrypted = false, want true")
 	}
 	if got := lastMessage["content_kind"].(string); got != "text" {
 		t.Fatalf("last_message.content_kind = %q, want text", got)

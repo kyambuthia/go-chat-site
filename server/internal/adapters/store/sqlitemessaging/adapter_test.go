@@ -783,10 +783,13 @@ func TestAdapter_ListThreadSummaries_EncryptedMessageUsesPlaceholderPreview(t *t
 	if len(summaries) != 1 {
 		t.Fatalf("expected 1 summary, got %d", len(summaries))
 	}
-	if summaries[0].LastMessageBody != "Encrypted message" {
-		t.Fatalf("LastMessageBody = %q, want Encrypted message", summaries[0].LastMessageBody)
+	if summaries[0].LastMessageBody != "" {
+		t.Fatalf("LastMessageBody = %q, want empty string", summaries[0].LastMessageBody)
 	}
 	if summaries[0].LastMessageContentKind != "text" {
 		t.Fatalf("LastMessageContentKind = %q, want text", summaries[0].LastMessageContentKind)
+	}
+	if !summaries[0].LastMessageEncrypted {
+		t.Fatal("LastMessageEncrypted = false, want true")
 	}
 }

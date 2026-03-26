@@ -110,7 +110,9 @@ Current repo status:
 - recipient read path already prefers local decryption over plaintext fallback
 - undecrypted incoming ciphertext no longer trusts compatibility plaintext for bubbles/previews
 - thread summaries and unread filtering already use `content_kind` metadata
-- remaining work is mainly around rollout posture and removing the last compatibility assumptions from sender history/UX
+- ciphertext-only thread summaries now expose explicit encrypted metadata instead of synthesizing generic plaintext preview bodies
+- devices that cannot decrypt encrypted messages now render explicit actionless placeholders that direct the user back to an enrolled device
+- remaining work is mainly around broader device UX and the longer-term ratchet/session rollout
 
 ### Stage 4: Legacy Plaintext Retirement
 - stop writing plaintext for E2EE-capable threads
@@ -136,6 +138,7 @@ Current repo status:
 - revoked devices cannot continue publishing usable encrypted envelopes
 - thread previews for encrypted conversations do not rely on plaintext body access
 - senders can still reconstruct their own ciphertext-only history after reload
+- devices without matching private keys fail closed with explicit encrypted placeholders rather than plaintext fallback
 
 ## Out Of Scope For This Plan
 - legal/compliance policy for encrypted-content retention
