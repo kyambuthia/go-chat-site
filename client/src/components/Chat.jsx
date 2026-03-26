@@ -24,6 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
 import {
   buildEncryptedEnvelope,
   buildOpaqueEnvelopeScaffold,
+  decryptEncryptedEnvelope,
   selectPreferredActiveDevice,
   selectPreferredRecipientDevice,
 } from "../lib/deviceIdentity.js";
@@ -198,10 +199,30 @@ function sortMessages(messages) {
   });
 }
 
+function normalizeEnvelopeFields(source) {
+  return {
+    ciphertext: source?.ciphertext || "",
+    encryptionVersion: source?.encryption_version || source?.encryptionVersion || "",
+    senderDeviceID: Number(source?.sender_device_id || source?.senderDeviceID || 0),
+    recipientDeviceID: Number(source?.recipient_device_id || source?.recipientDeviceID || 0),
+  };
+}
+
+function withEncryptedBodyFallback(message) {
+  if (!message?.ciphertext || message?.body) {
+    return message;
+  }
+  return {
+    ...message,
+    body: "Encrypted message unavailable on this device.",
+    encryptedUnavailable: true,
+  };
+}
+
 function buildThreadHistory(contact, inboxMessages, outboxMessages) {
   const received = inboxMessages
     .filter((message) => Number(message.from_user_id) === Number(contact.id))
-    .map((message) => addPaymentRequestMetadata({
+    .map((message) => addPaymentRequestMetadata(withEncryptedBodyFallback({
       id: message.id,
       serverID: message.id,
       from: contact.username,
@@ -210,11 +231,12 @@ function buildThreadHistory(contact, inboxMessages, outboxMessages) {
       delivered: Boolean(message.delivered_at),
       read: Boolean(message.read_at),
       createdAt: message.created_at,
-    }));
+      ...normalizeEnvelopeFields(message),
+    })));
 
   const sent = outboxMessages
     .filter((message) => Number(message.to_user_id) === Number(contact.id))
-    .map((message) => addPaymentRequestMetadata({
+    .map((message) => addPaymentRequestMetadata(withEncryptedBodyFallback({
       id: message.id,
       serverID: message.id,
       clientID: message.client_message_id || undefined,
@@ -227,7 +249,8 @@ function buildThreadHistory(contact, inboxMessages, outboxMessages) {
       createdAt: message.created_at,
       failed: Boolean(message.delivery_failed) && !message.delivered_at && !message.read_at,
       errorMessage: message.delivery_failed && !message.delivered_at && !message.read_at ? "Recipient was offline." : "",
-    }));
+      ...normalizeEnvelopeFields(message),
+    })));
 
   return sortMessages(dedupeMessages([...received, ...sent]));
 }
@@ -235,7 +258,7 @@ function buildThreadHistory(contact, inboxMessages, outboxMessages) {
 function normalizeStoredMessageForContact(message, contact) {
   const received = Number(message.from_user_id) === Number(contact.id);
 
-  return addPaymentRequestMetadata({
+  return addPaymentRequestMetadata(withEncryptedBodyFallback({
     id: message.id,
     serverID: message.id,
     clientID: !received && message.client_message_id ? message.client_message_id : undefined,
@@ -248,7 +271,8 @@ function normalizeStoredMessageForContact(message, contact) {
     createdAt: message.created_at,
     failed: !received && Boolean(message.delivery_failed) && !message.delivered_at && !message.read_at,
     errorMessage: !received && message.delivery_failed && !message.delivered_at && !message.read_at ? "Recipient was offline." : "",
-  });
+    ...normalizeEnvelopeFields(message),
+  }));
 }
 
 function buildThreadSummariesByUsername(summaries) {
@@ -725,6 +749,8 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const threadsRef = useRef(threads);
   const threadSummariesRef = useRef(threadSummaries);
   const unreadByUserRef = useRef(unreadByUser);
+  const deviceDirectoryCacheRef = useRef({});
+  const decryptMessageForContactRef = useRef(null);
 
   const selectedUsername = selectedContact?.username;
   const recipientDeviceIdentity = selectPreferredRecipientDevice(selectedContactDirectory);
@@ -745,6 +771,74 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   useEffect(() => {
     unreadByUserRef.current = unreadByUser;
   }, [unreadByUser]);
+
+  const cacheDeviceDirectory = (username, directory) => {
+    if (!username) {
+      return;
+    }
+    deviceDirectoryCacheRef.current = {
+      ...deviceDirectoryCacheRef.current,
+      [username]: directory,
+    };
+  };
+
+  const getOrFetchDeviceDirectory = async (username) => {
+    if (!username) {
+      return null;
+    }
+
+    const cached = deviceDirectoryCacheRef.current[username];
+    if (cached) {
+      return cached;
+    }
+
+    const directory = await getDeviceDirectory(username);
+    cacheDeviceDirectory(username, directory || null);
+    return directory || null;
+  };
+
+  const decryptMessageForContact = async (message, contact) => {
+    if (!message?.ciphertext || message.sent || !contact?.username) {
+      return message;
+    }
+
+    const recipientDeviceID = Number(message.recipientDeviceID || 0);
+    if (!Number.isInteger(recipientDeviceID) || recipientDeviceID <= 0) {
+      return message;
+    }
+
+    const recipientPrivateBundle = getLocalDeviceBundle(recipientDeviceID);
+    if (!recipientPrivateBundle) {
+      return withEncryptedBodyFallback(message);
+    }
+
+    try {
+      const directory = await getOrFetchDeviceDirectory(contact.username);
+      const senderDevice = (directory?.devices || []).find(
+        (device) => Number(device.id) === Number(message.senderDeviceID || 0),
+      );
+      const decrypted = await decryptEncryptedEnvelope({
+        ciphertext: message.ciphertext,
+        recipientPrivateBundle,
+        senderIdentityKey: senderDevice?.identity_key || "",
+      });
+      return addPaymentRequestMetadata({
+        ...message,
+        body: decrypted.body,
+        decrypted: true,
+        signatureVerified: decrypted.signatureValid,
+        encryptedUnavailable: false,
+      });
+    } catch (err) {
+      console.error(`Failed to decrypt message for ${contact.username}:`, err);
+      return withEncryptedBodyFallback({
+        ...message,
+        encryptedUnavailable: true,
+      });
+    }
+  };
+
+  decryptMessageForContactRef.current = decryptMessageForContact;
 
   useEffect(() => {
     let cancelled = false;
@@ -782,6 +876,7 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       try {
         const directoryResponse = await getDeviceDirectory(selectedUsername);
         if (!cancelled) {
+          cacheDeviceDirectory(selectedUsername, directoryResponse || null);
           setSelectedContactDirectory(directoryResponse || null);
         }
       } catch (err) {
@@ -810,6 +905,11 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
         const nextContacts = contactsResponse || [];
 
         setContacts(nextContacts);
+        deviceDirectoryCacheRef.current = Object.fromEntries(
+          Object.entries(deviceDirectoryCacheRef.current).filter(([username]) =>
+            nextContacts.some((contact) => contact.username === username),
+          ),
+        );
         if (selectedContactRef.current) {
           const refreshedSelectedContact = nextContacts.find((contact) => contact.username === selectedContactRef.current.username);
           if (refreshedSelectedContact) {
@@ -892,10 +992,15 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
       try {
         const outboxMessages = await getOutbox({ limit: 500 });
         const bootstrappedThreads = await Promise.all(remoteCandidates.map(async (contact) => {
-          const inboxMessages = await getInbox({ withUserID: contact.id, limit: 100 });
+            const inboxMessages = await getInbox({ withUserID: contact.id, limit: 100 });
+          const thread = await Promise.all(
+            buildThreadHistory(contact, inboxMessages || [], outboxMessages || []).map((message) =>
+              decryptMessageForContactRef.current(message, contact),
+            ),
+          );
           return {
             contact,
-            thread: buildThreadHistory(contact, inboxMessages || [], outboxMessages || []),
+            thread: sortMessages(dedupeMessages(thread)),
           };
         }));
 
@@ -1046,7 +1151,10 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
               continue;
             }
 
-            const normalized = normalizeStoredMessageForContact(message, contact);
+            const normalized = await decryptMessageForContactRef.current(
+              normalizeStoredMessageForContact(message, contact),
+              contact,
+            );
             if (!normalizedByUsername[contact.username]) {
               normalizedByUsername[contact.username] = [];
             }
@@ -1242,7 +1350,11 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
           return;
         }
 
-        const nextThread = buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []);
+        const nextThread = sortMessages(dedupeMessages(await Promise.all(
+          buildThreadHistory(selectedContact, inboxMessages || [], outboxMessages || []).map((message) =>
+            decryptMessageForContactRef.current(message, selectedContact),
+          ),
+        )));
         hydratedThreadsRef.current.add(selectedContact.username);
 
         setThreads((prev) => ({
@@ -1406,79 +1518,83 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     }
 
     if (lastWsMessage.type === "direct_message" && lastWsMessage.from) {
-      const paymentUpdate = getPaymentUpdateMeta(lastWsMessage);
-      const shouldAffectSummary = !paymentUpdate;
-      const normalized = addPaymentRequestMetadata({
-        ...lastWsMessage,
-        id: lastWsMessage.id || Date.now(),
-        serverID: lastWsMessage.id || null,
-        createdAt: lastWsMessage.created_at || new Date().toISOString(),
-        sent: false,
-        delivered: false,
-        read: false,
-      });
-      const messageContact = findContactByUsername(contacts, lastWsMessage.from);
+      void (async () => {
+        const paymentUpdate = getPaymentUpdateMeta(lastWsMessage);
+        const shouldAffectSummary = !paymentUpdate;
+        const messageContact = findContactByUsername(contacts, lastWsMessage.from);
+        const normalized = await decryptMessageForContactRef.current(addPaymentRequestMetadata(withEncryptedBodyFallback({
+          ...lastWsMessage,
+          id: lastWsMessage.id || Date.now(),
+          serverID: lastWsMessage.id || null,
+          createdAt: lastWsMessage.created_at || new Date().toISOString(),
+          sent: false,
+          delivered: false,
+          read: false,
+          ...normalizeEnvelopeFields(lastWsMessage),
+        })), messageContact);
 
-      setThreads((prev) => {
-        const existing = prev[lastWsMessage.from] || [];
-        const merged = sortMessages(dedupeMessages([...existing, normalized]));
-        return {
-          ...prev,
-          [lastWsMessage.from]: paymentUpdate
-            ? updateThreadPaymentRequest(merged, paymentUpdate.requestId, {
-              paymentStatus: paymentUpdate.status,
-              paymentError: "",
-            })
-            : merged,
-        };
-      });
-      if (shouldAffectSummary) {
-        setThreadSummaries((prev) => {
-          const existing = prev[lastWsMessage.from] || buildLocalThreadSummary(
-            messageContact,
-            normalized,
-            selectedUsername !== lastWsMessage.from ? 1 : 0,
-          );
-          if (!existing) {
-            return prev;
-          }
+        setThreads((prev) => {
+          const existing = prev[lastWsMessage.from] || [];
+          const merged = sortMessages(dedupeMessages([...existing, normalized]));
           return {
             ...prev,
-            [lastWsMessage.from]: {
-              ...existing,
-              unread_count: selectedUsername !== lastWsMessage.from
-                ? Number(existing.unread_count || 0) + 1
-                : 0,
-              last_message: {
-                id: normalized.serverID || normalized.id,
-                from_user_id: existing.user_id,
-                to_user_id: null,
-                body: normalized.body,
-                created_at: normalized.createdAt,
-              },
-            },
+            [lastWsMessage.from]: paymentUpdate
+              ? updateThreadPaymentRequest(merged, paymentUpdate.requestId, {
+                paymentStatus: paymentUpdate.status,
+                paymentError: "",
+              })
+              : merged,
           };
         });
-      }
-
-      if (selectedUsername !== lastWsMessage.from) {
         if (shouldAffectSummary) {
-          setUnreadByUser((prev) => ({
-            ...prev,
-            [lastWsMessage.from]: (prev[lastWsMessage.from] || 0) + 1,
-          }));
-        }
-
-        if (lastWsMessage.id) {
-          void markMessageDelivered(lastWsMessage.id).catch((err) => {
-            console.error("Failed to mark message delivered:", err);
+          setThreadSummaries((prev) => {
+            const existing = prev[lastWsMessage.from] || buildLocalThreadSummary(
+              messageContact,
+              normalized,
+              selectedUsername !== lastWsMessage.from ? 1 : 0,
+            );
+            if (!existing) {
+              return prev;
+            }
+            return {
+              ...prev,
+              [lastWsMessage.from]: {
+                ...existing,
+                unread_count: selectedUsername !== lastWsMessage.from
+                  ? Number(existing.unread_count || 0) + 1
+                  : 0,
+                last_message: {
+                  id: normalized.serverID || normalized.id,
+                  from_user_id: existing.user_id,
+                  to_user_id: null,
+                  body: normalized.body,
+                  created_at: normalized.createdAt,
+                },
+              },
+            };
           });
         }
-      } else if (lastWsMessage.id) {
-        void markMessageRead(lastWsMessage.id).catch((err) => {
-          console.error("Failed to mark message read:", err);
-        });
-      }
+
+        if (selectedUsername !== lastWsMessage.from) {
+          if (shouldAffectSummary) {
+            setUnreadByUser((prev) => ({
+              ...prev,
+              [lastWsMessage.from]: (prev[lastWsMessage.from] || 0) + 1,
+            }));
+          }
+
+          if (lastWsMessage.id) {
+            void markMessageDelivered(lastWsMessage.id).catch((err) => {
+              console.error("Failed to mark message delivered:", err);
+            });
+          }
+        } else if (lastWsMessage.id) {
+          void markMessageRead(lastWsMessage.id).catch((err) => {
+            console.error("Failed to mark message read:", err);
+          });
+        }
+      })();
+      return;
     }
   }, [contacts, lastWsMessage, selectedContact, selectedUsername]);
 
