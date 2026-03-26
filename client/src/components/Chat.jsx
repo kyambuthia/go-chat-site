@@ -29,6 +29,11 @@ import {
   selectPreferredRecipientDevice,
 } from "../lib/deviceIdentity.js";
 import { getLocalDeviceBundle } from "../lib/deviceKeyStore.js";
+import {
+  linkStoredMessageID,
+  resolveSentMessageContent,
+  saveSentMessageContent,
+} from "../lib/sentMessageContentCache.js";
 
 const MICROAPP_PREFIX = "__microapp_v1__:";
 
@@ -101,6 +106,16 @@ function getDisplayedMessageBody(message, fallback = "No messages yet") {
     return fallback;
   }
   if (canUseMessageBodyForDisplay(message)) {
+    if (!message.body && message.ciphertext) {
+      const contentKind = message.contentKind || message.content_kind || "text";
+      if (contentKind === "payment_request") {
+        return "Encrypted payment request";
+      }
+      if (contentKind === "payment_request_update") {
+        return "Encrypted payment update";
+      }
+      return "Encrypted message";
+    }
     return message.body || fallback;
   }
   const contentKind = message.contentKind || message.content_kind || "text";
@@ -240,6 +255,19 @@ function normalizeEnvelopeFields(source) {
 function withEncryptedBodyFallback(message) {
   if (!message?.ciphertext || message?.body) {
     return message;
+  }
+  if (message.sent) {
+    const cached = resolveSentMessageContent({
+      clientID: message.clientID || message.client_message_id || 0,
+      serverID: message.serverID || message.id || 0,
+    });
+    if (cached?.body) {
+      return {
+        ...message,
+        body: cached.body,
+        contentKind: message.contentKind || cached.content_kind || "text",
+      };
+    }
   }
   return {
     ...message,
@@ -1445,6 +1473,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     };
 
     if (lastWsMessage.type === "message_ack") {
+      if (lastWsMessage.stored_message_id) {
+        linkStoredMessageID(lastWsMessage.id, lastWsMessage.stored_message_id);
+      }
       const nextThreads = { ...threadsRef.current };
       const affectedUsernames = [];
 
@@ -1511,6 +1542,9 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
     }
 
     if (lastWsMessage.type === "error") {
+      if (lastWsMessage.stored_message_id) {
+        linkStoredMessageID(lastWsMessage.id, lastWsMessage.stored_message_id);
+      }
       const nextThreads = { ...threadsRef.current };
       const affectedUsernames = [];
 
@@ -1707,6 +1741,16 @@ export default function Chat({ ws, selectedContact, setSelectedContact, onlineUs
   const handleSendMessage = (message) => {
     if (!selectedUsername) {
       return;
+    }
+
+    if (message.ciphertext && message.body) {
+      saveSentMessageContent({
+        clientID: message.id,
+        serverID: message.serverID || 0,
+        to: selectedUsername,
+        contentKind: message.content_kind || message.contentKind || "text",
+        body: message.body,
+      });
     }
 
     const normalized = addPaymentRequestMetadata({
