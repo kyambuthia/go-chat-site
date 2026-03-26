@@ -97,7 +97,7 @@ Current repo status:
 
 Current repo status:
 - done for the initial rollout path
-- `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` controls whether encrypted rows still dual-write plaintext `body`
+- `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` controls whether encrypted rows still dual-write plaintext `body`, and plaintext suppression is now the default path
 
 ### Stage 3: Read Path Preference for Ciphertext
 - encrypted threads use ciphertext envelopes exclusively

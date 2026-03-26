@@ -114,7 +114,7 @@ Session management behavior:
 - Login uses per-IP and per-user quotas plus a lockout/backoff table
 - Refresh uses per-IP quotas to bound refresh-token abuse and replay probing
 - WS origin checks use `WS_ALLOWED_ORIGINS` with localhost-safe defaults
-- encrypted-message plaintext dual-write can be controlled with `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED`
+- encrypted-message plaintext dual-write can be controlled with `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` and is disabled by default
 
 ## Current Device Identity Contract
 - `POST /api/devices` registers a device identity with `label`, `algorithm`, `identity_key`, `signed_prekey_id`, `signed_prekey`, `signed_prekey_signature`, and `prekeys`
@@ -126,7 +126,7 @@ Session management behavior:
 ## Encrypted Message Envelope Direction
 - durable message records now reserve optional fields for `ciphertext`, `encryption_version`, `sender_device_id`, and `recipient_device_id`
 - encrypted rows may also carry `content_kind` metadata so unread counts and thread previews do not depend on plaintext parsing
-- plaintext `body` remains supported during migration, but encrypted rows can already be stored without plaintext when `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=false`
+- plaintext `body` remains supported during migration, but encrypted rows are now stored without plaintext by default; set `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=true` only for temporary compatibility rollback
 - ciphertext-only durable rows should still preserve sender UX via local client-side sent-content caching and recipient UX via local decryption
 - clients and adapters should treat `ciphertext` as opaque payload data and should not require server-side plaintext inspection for receipts or pagination
 

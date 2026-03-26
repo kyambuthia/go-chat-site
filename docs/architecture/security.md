@@ -80,7 +80,7 @@ Implemented in current codebase:
 - `LOGIN_LOCKOUT_THRESHOLD` (optional; default `5`)
 - `LOGIN_LOCKOUT_WINDOW_MINUTES` (optional; default `15`)
 - `LOGIN_LOCKOUT_DURATION_MINUTES` (optional; default `15`)
-- `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` (optional; default `true`)
+- `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED` (optional; default `false`)
 
 ## Session Lifecycle
 - `POST /api/login` issues a session-backed access token and a refresh token.

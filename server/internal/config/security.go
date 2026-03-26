@@ -116,7 +116,7 @@ func LoginLockoutDuration() time.Duration {
 	return time.Duration(intFromEnv(EnvLoginLockoutDurationMins, 15)) * time.Minute
 }
 func MessagingStorePlaintextWhenEncrypted() bool {
-	return boolFromEnv(EnvMessagingStorePlaintext, true)
+	return boolFromEnv(EnvMessagingStorePlaintext, false)
 }
 
 func intFromEnv(key string, fallback int) int {

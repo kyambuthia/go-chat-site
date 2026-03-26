@@ -166,10 +166,9 @@ Current repo status:
 - local browser-side private key bundles are generated and stored for enrolled devices
 - encrypted envelopes are generated on send and decrypted locally on read when key material is available
 - summaries/unread filtering now use `content_kind` metadata instead of body parsing
-- ciphertext-only durable storage is supported behind `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=false`
+- ciphertext-only durable storage is now the default path; `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=true` remains as a temporary compatibility rollback
 
 Main remaining work before Phase 4 can be treated as fully complete:
-- enable ciphertext-only storage as the default rollout mode after controlled validation
 - remove remaining compatibility assumptions around plaintext sender history in long-tail edge cases
 - decide/document the production rollout posture for encrypted-payment UX on devices that cannot decrypt
 

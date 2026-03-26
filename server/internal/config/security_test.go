@@ -98,8 +98,8 @@ func TestIntFromEnv_UsesFallbackForInvalidValues(t *testing.T) {
 
 func TestMessagingStorePlaintextWhenEncrypted_DefaultsAndParsesEnv(t *testing.T) {
 	t.Setenv(EnvMessagingStorePlaintext, "")
-	if got := MessagingStorePlaintextWhenEncrypted(); got != true {
-		t.Fatalf("MessagingStorePlaintextWhenEncrypted default = %v, want true", got)
+	if got := MessagingStorePlaintextWhenEncrypted(); got != false {
+		t.Fatalf("MessagingStorePlaintextWhenEncrypted default = %v, want false", got)
 	}
 
 	t.Setenv(EnvMessagingStorePlaintext, "false")
@@ -108,7 +108,7 @@ func TestMessagingStorePlaintextWhenEncrypted_DefaultsAndParsesEnv(t *testing.T)
 	}
 
 	t.Setenv(EnvMessagingStorePlaintext, "invalid")
-	if got := MessagingStorePlaintextWhenEncrypted(); got != true {
-		t.Fatalf("MessagingStorePlaintextWhenEncrypted invalid = %v, want true", got)
+	if got := MessagingStorePlaintextWhenEncrypted(); got != false {
+		t.Fatalf("MessagingStorePlaintextWhenEncrypted invalid = %v, want false", got)
 	}
 }
