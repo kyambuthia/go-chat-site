@@ -71,6 +71,8 @@ const formatKeyPreview = (value) => {
   return `${value.slice(0, 14)}...${value.slice(-10)}`;
 };
 
+const hasLocalKeysForDevice = (deviceID, localBundleDeviceIDs) => localBundleDeviceIDs.includes(Number(deviceID));
+
 export default function AccountPage({ handleLogout }) {
   const [user, setUser] = useState(null);
   const [wallet, setWallet] = useState(null);
@@ -326,6 +328,18 @@ export default function AccountPage({ handleLogout }) {
     return <div className="account-page">Error: {error}</div>;
   }
 
+  const currentSessionDevice = devices.find((device) => device.current_session && device.state !== "revoked") || null;
+  const currentSessionHasLocalKeys = currentSessionDevice
+    ? hasLocalKeysForDevice(currentSessionDevice.id, localBundleDeviceIDs)
+    : false;
+  const activeDevices = devices.filter((device) => device.state !== "revoked");
+  const activeDevicesWithLocalKeys = activeDevices.filter((device) =>
+    hasLocalKeysForDevice(device.id, localBundleDeviceIDs),
+  );
+  const activeDevicesMissingLocalKeys = activeDevices.filter((device) =>
+    !hasLocalKeysForDevice(device.id, localBundleDeviceIDs),
+  );
+
   return (
     <div className="account-page">
       <h2>My Account</h2>
@@ -454,6 +468,36 @@ export default function AccountPage({ handleLogout }) {
             <p>Register public device keys now so encrypted messaging can use them later.</p>
           </div>
         </div>
+        <div className="device-readiness-panel">
+          <div className={`device-readiness-item ${currentSessionHasLocalKeys ? "is-ready" : "is-warning"}`}>
+            <strong>
+              {currentSessionHasLocalKeys
+                ? "This browser can decrypt for the current session device."
+                : "This browser is missing local keys for the current session device."}
+            </strong>
+            <span>
+              {currentSessionDevice
+                ? currentSessionHasLocalKeys
+                  ? `${currentSessionDevice.label || "This device"} has a local private bundle saved here.`
+                  : `${currentSessionDevice.label || "This device"} is registered on the server, but incoming ciphertext for it will stay unreadable here until the local bundle is restored or re-enrolled.`
+                : "This session has no active registered device identity yet."}
+            </span>
+          </div>
+          <div className={`device-readiness-item ${activeDevicesMissingLocalKeys.length === 0 ? "is-ready" : "is-warning"}`}>
+            <strong>
+              {activeDevicesMissingLocalKeys.length === 0
+                ? "All active device records in this browser have local keys."
+                : `${activeDevicesMissingLocalKeys.length} active device ${activeDevicesMissingLocalKeys.length === 1 ? "record is" : "records are"} missing local keys here.`}
+            </strong>
+            <span>
+              {activeDevices.length === 0
+                ? "Generate and register a device bundle to enable decrypt-on-read."
+                : activeDevicesMissingLocalKeys.length === 0
+                  ? `${activeDevicesWithLocalKeys.length} active device ${activeDevicesWithLocalKeys.length === 1 ? "bundle is" : "bundles are"} locally available in this browser.`
+                  : "Server-side device enrollment does not restore private keys automatically. Keep recovery expectations tied to the browser that generated the bundle."}
+            </span>
+          </div>
+        </div>
         <form className="device-form" onSubmit={handleRegisterDevice}>
           <div className="profile-actions">
             <button
@@ -562,60 +606,73 @@ export default function AccountPage({ handleLogout }) {
           <p className="empty-chat-message">No device identities registered yet.</p>
         ) : (
           <ul className="device-list">
-            {devices.map((device) => (
-              <li key={device.id} className="device-item">
-                <div className="device-copy">
-                  <div className="session-title-row">
-                    <strong>{device.label || "This device"}</strong>
-                    {device.current_session && <span className="session-badge">Current Session</span>}
-                    {localBundleDeviceIDs.includes(device.id) && <span className="session-badge">Local Keys</span>}
-                    <span className={`session-badge ${device.state === "revoked" ? "device-badge-revoked" : ""}`}>
-                      {device.state}
-                    </span>
-                  </div>
-                  <span>Algorithm: {device.algorithm}</span>
-                  <span>Active prekeys: {device.prekey_count}</span>
-                  <span className="device-key-preview">Identity key: {formatKeyPreview(device.identity_key)}</span>
-                  <span className="device-key-preview">Signed prekey: #{device.signed_prekey_id} {formatKeyPreview(device.signed_prekey)}</span>
-                  <time dateTime={device.rotated_at || device.created_at}>
-                    Last rotated {new Date(device.rotated_at || device.created_at).toLocaleString()}
-                  </time>
-                  {device.revoked_at && (
-                    <time dateTime={device.revoked_at}>
-                      Revoked {new Date(device.revoked_at).toLocaleString()}
+            {devices.map((device) => {
+              const hasLocalKeys = hasLocalKeysForDevice(device.id, localBundleDeviceIDs);
+              const needsRecovery = device.state !== "revoked" && !hasLocalKeys;
+
+              return (
+                <li key={device.id} className="device-item">
+                  <div className="device-copy">
+                    <div className="session-title-row">
+                      <strong>{device.label || "This device"}</strong>
+                      {device.current_session && <span className="session-badge">Current Session</span>}
+                      {hasLocalKeys && <span className="session-badge">Local Keys</span>}
+                      {needsRecovery && <span className="session-badge device-badge-warning">Recovery Needed</span>}
+                      <span className={`session-badge ${device.state === "revoked" ? "device-badge-revoked" : ""}`}>
+                        {device.state}
+                      </span>
+                    </div>
+                    <span>Algorithm: {device.algorithm}</span>
+                    <span>Active prekeys: {device.prekey_count}</span>
+                    <span className="device-key-preview">Identity key: {formatKeyPreview(device.identity_key)}</span>
+                    <span className="device-key-preview">Signed prekey: #{device.signed_prekey_id} {formatKeyPreview(device.signed_prekey)}</span>
+                    {device.state !== "revoked" && (
+                      <span className={`device-local-state ${hasLocalKeys ? "is-ready" : "is-warning"}`}>
+                        {hasLocalKeys
+                          ? "Local private bundle is available in this browser."
+                          : "This browser does not have the private bundle for this device."}
+                      </span>
+                    )}
+                    <time dateTime={device.rotated_at || device.created_at}>
+                      Last rotated {new Date(device.rotated_at || device.created_at).toLocaleString()}
                     </time>
-                  )}
-                </div>
-                <div className="device-actions">
-                  {device.state !== "revoked" && (
-                    <form className="device-prekeys-form" onSubmit={(event) => handlePublishPrekeys(event, device.id)}>
-                      <label htmlFor={`publish-prekeys-${device.id}`}>Publish More Prekeys</label>
-                      <textarea
-                        id={`publish-prekeys-${device.id}`}
-                        rows="3"
-                        value={publishInputs[device.id] || ""}
-                        onChange={(event) => handlePublishInputChange(device.id, event.target.value)}
-                        placeholder={"One per line as id:key\n101:base64-public-key"}
-                        disabled={publishingDeviceID === device.id}
-                      />
-                      <button type="submit" className="secondary-button" disabled={publishingDeviceID === device.id}>
-                        {publishingDeviceID === device.id ? "Publishing..." : "Publish Prekeys"}
+                    {device.revoked_at && (
+                      <time dateTime={device.revoked_at}>
+                        Revoked {new Date(device.revoked_at).toLocaleString()}
+                      </time>
+                    )}
+                  </div>
+                  <div className="device-actions">
+                    {device.state !== "revoked" && (
+                      <form className="device-prekeys-form" onSubmit={(event) => handlePublishPrekeys(event, device.id)}>
+                        <label htmlFor={`publish-prekeys-${device.id}`}>Publish More Prekeys</label>
+                        <textarea
+                          id={`publish-prekeys-${device.id}`}
+                          rows="3"
+                          value={publishInputs[device.id] || ""}
+                          onChange={(event) => handlePublishInputChange(device.id, event.target.value)}
+                          placeholder={"One per line as id:key\n101:base64-public-key"}
+                          disabled={publishingDeviceID === device.id}
+                        />
+                        <button type="submit" className="secondary-button" disabled={publishingDeviceID === device.id}>
+                          {publishingDeviceID === device.id ? "Publishing..." : "Publish Prekeys"}
+                        </button>
+                      </form>
+                    )}
+                    {device.state !== "revoked" && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => handleRevokeDevice(device.id)}
+                        disabled={revokingDeviceID === device.id}
+                      >
+                        {revokingDeviceID === device.id ? "Revoking..." : "Revoke Device"}
                       </button>
-                    </form>
-                  )}
-                  {device.state !== "revoked" && (
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => handleRevokeDevice(device.id)}
-                      disabled={revokingDeviceID === device.id}
-                    >
-                      {revokingDeviceID === device.id ? "Revoking..." : "Revoke Device"}
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
         {deviceStatus.message && (

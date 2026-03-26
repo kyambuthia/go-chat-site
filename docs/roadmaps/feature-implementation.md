@@ -164,6 +164,7 @@ Exit criteria:
 Current repo status:
 - device registration, rotation, revocation, and public directory flows are implemented
 - local browser-side private key bundles are generated and stored for enrolled devices
+- the account UI now shows whether the current browser actually holds the private bundle for each enrolled device
 - encrypted envelopes are generated on send and decrypted locally on read when key material is available
 - summaries/unread filtering now use `content_kind` metadata instead of body parsing
 - ciphertext-only durable storage is now the default path; `MESSAGING_STORE_PLAINTEXT_WHEN_ENCRYPTED=true` remains as a temporary compatibility rollback
