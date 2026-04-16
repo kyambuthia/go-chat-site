@@ -107,7 +107,7 @@ func (h *Hub) AddClient(c *client) error {
 
 	c.trySend(Message{Type: coremsg.KindPresenceState, Users: onlineUsers})
 	if isFirstSession {
-		go h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOnline, From: c.username})
+		h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOnline, From: c.username})
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func (h *Hub) RemoveClient(c *client) {
 	}
 	c.close()
 	if isLastSession {
-		go h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOffline, From: c.username})
+		h.broadcastExcept(c.userID, Message{Type: coremsg.KindUserOffline, From: c.username})
 	}
 }
 
